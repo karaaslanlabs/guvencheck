@@ -1,0 +1,18 @@
+{
+  "name": "GüvenCheck",
+  "short_name": "GüvenCheck",
+  "description": "Şüpheli mesaj, link ve ekran görüntülerini risk sinyalleri açısından kontrol et.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#07130f",
+  "theme_color": "#07130f",
+  "lang": "tr",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
