@@ -9,8 +9,7 @@ const reasonLabels: Record<string,string> = {
   fazla_supheci: "Fazla şüpheciydi",
   riski_az_gosterdi: "Riski az gösterdi",
   anlasilmadi: "Açıklama anlaşılmadı",
-  diger: "Diğer",
-  belirtilmedi: "Neden seçilmedi"
+  diger: "Diğer"
 };
 const typeLabels: Record<string,string> = { text: "Mesaj", link: "Link", image: "Ekran görüntüsü" };
 const routeLabels: Record<string,string> = {
@@ -53,17 +52,14 @@ export default async function AdminPage() {
   const byType = countBy(completed, r => r.analysis_type);
   const byLevel = countBy(completed, r => r.risk_level);
   const byRoute = countBy(completed, r => r.model_route);
-  const byReason = countBy(
-    feedback.filter(r => r.helpful === false),
-    r => r.feedback_reason || "belirtilmedi"
-  );
+  const byReason = countBy(feedback.filter(r => r.helpful === false), r => r.feedback_reason);
   // Page view satırları beta sırasında çok gürültülü. Son olay tablosunda yalnız anlamlı ürün hareketlerini göster.
   const recent = rows.filter(r => r.event_type !== "page_view").slice(0, 30);
   const attempts = completed.length + errors.length;
 
   return <main className="adminShell">
     <header className="adminHead">
-      <div><div className="brand">GüvenCheck Admin</div><div className="tagline">Kapalı beta · içerik saklamayan ürün analitiği</div></div>
+      <div><div className="brand">GüvenCheck Admin</div><div className="tagline">Kapalı beta V0.8.3 · içerik saklamayan ürün analitiği</div></div>
       <Link href="/" className="labBack">Uygulamaya dön</Link>
     </header>
 
@@ -76,7 +72,7 @@ export default async function AdminPage() {
       <div className="adminMetric"><span>Faydalı geri bildirim</span><strong>{feedback.length ? `${pct(helpful, feedback.length)}%` : "—"}</strong><small>{helpful} evet · {unhelpful} hayır</small></div>
       <div className="adminMetric"><span>Geri bildirim oranı</span><strong>{completed.length ? `${pct(feedback.length, completed.length)}%` : "—"}</strong><small>{feedback.length}/{completed.length || 0} analiz</small></div>
       <div className="adminMetric"><span>Hata oranı</span><strong>{attempts ? `${pct(errors.length, attempts)}%` : "—"}</strong><small>{errors.length} hata</small></div>
-      <div className="adminMetric"><span>Paylaşım oranı</span><strong>{completed.length ? `${pct(shares.length, completed.length)}%` : "—"}</strong><small>{shares.length} paylaşım tıklaması</small></div>
+      <div className="adminMetric"><span>Paylaşım başlatma oranı</span><strong>{completed.length ? `${pct(shares.length, completed.length)}%` : "—"}</strong><small>{shares.length} paylaşım açılışı</small></div>
       <div className="adminMetric"><span>Ort. analiz süresi</span><strong>{avgLatency ? `${(avgLatency/1000).toFixed(1)} sn` : "—"}</strong></div>
       <div className="adminMetric"><span>Beta sağlık</span><strong>{errors.length === 0 && completed.length > 0 ? "İyi" : completed.length ? "İzle" : "—"}</strong><small>Kritik metrik: hata + geri bildirim</small></div>
     </section>
