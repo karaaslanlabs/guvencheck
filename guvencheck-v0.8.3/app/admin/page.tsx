@@ -9,7 +9,8 @@ const reasonLabels: Record<string,string> = {
   fazla_supheci: "Fazla şüpheciydi",
   riski_az_gosterdi: "Riski az gösterdi",
   anlasilmadi: "Açıklama anlaşılmadı",
-  diger: "Diğer"
+  diger: "Diğer",
+  belirtilmedi: "Neden seçilmedi"
 };
 const typeLabels: Record<string,string> = { text: "Mesaj", link: "Link", image: "Ekran görüntüsü" };
 const routeLabels: Record<string,string> = {
@@ -52,14 +53,17 @@ export default async function AdminPage() {
   const byType = countBy(completed, r => r.analysis_type);
   const byLevel = countBy(completed, r => r.risk_level);
   const byRoute = countBy(completed, r => r.model_route);
-  const byReason = countBy(feedback.filter(r => r.helpful === false), r => r.feedback_reason);
+  const byReason = countBy(
+    feedback.filter(r => r.helpful === false),
+    r => r.feedback_reason || "belirtilmedi"
+  );
   // Page view satırları beta sırasında çok gürültülü. Son olay tablosunda yalnız anlamlı ürün hareketlerini göster.
   const recent = rows.filter(r => r.event_type !== "page_view").slice(0, 30);
   const attempts = completed.length + errors.length;
 
   return <main className="adminShell">
     <header className="adminHead">
-      <div><div className="brand">GüvenCheck Admin</div><div className="tagline">Kapalı beta V0.8.3 · içerik saklamayan ürün analitiği</div></div>
+      <div><div className="brand">GüvenCheck Admin</div><div className="tagline">Kapalı beta · içerik saklamayan ürün analitiği</div></div>
       <Link href="/" className="labBack">Uygulamaya dön</Link>
     </header>
 
