@@ -6,7 +6,7 @@ export const revalidate = 0;
 
 // Beta Validation 1 resmi başlangıcı.
 // İlk gerçek kullanıcıyı bu tarihten sonra teste al.
-const BETA_START_ISO = "2026-08-11T00:00:00+03:00";
+const BETA_START_ISO = "2026-08-10T22:35:00+03:00";
 const BETA_TARGET_USERS = 100;
 
 const reasonLabels: Record<string,string> = {
