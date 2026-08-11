@@ -1,4 +1,4 @@
-# GüvenCheck V0.8.3 — Kapalı Beta
+#guvencheck-v0.9.0-beta.1
 
 Türkiye odaklı dijital risk analizi. Mesaj, link ve ekran görüntüsünü Luna → gerektiğinde Terra + web doğrulama hibrit hattıyla değerlendirir.
 
