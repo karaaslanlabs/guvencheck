@@ -2,24 +2,89 @@ export default function PrivacyPage() {
   return (
     <main className="shell legalShell">
       <header className="brandRow">
-        <div className="logo" aria-hidden="true">G</div>
+        <div className="logo" aria-hidden="true">
+          <img src="/brand/guvencheck-mark-512.png" alt="" />
+        </div>
         <div>
           <div className="brand">GüvenCheck</div>
-          <div className="tagline">Beta gizlilik özeti</div>
+          <div className="tagline">Gizlilik ve veri kullanımı</div>
         </div>
         <a className="vbadge" href="/">Uygulamaya dön</a>
       </header>
+
       <section className="card legalCard">
         <h1>Gizlilik ve veri kullanımı</h1>
-        <p>GüvenCheck beta sürümünde analiz içeriğini kendi veritabanında saklamaz. Mesaj, bağlantı veya ekran görüntüsü analiz yapılabilmesi için sunucu altyapımıza ve kullandığımız AI sağlayıcısına iletilir.</p>
+
+        <p>
+          GüvenCheck; mesaj, bağlantı ve ekran görüntüsü gibi şüpheli dijital
+          içerikleri analiz etmek için çalışır. Analiz ettiğiniz içeriği
+          GüvenCheck&apos;in kendi ürün analitiği veritabanında saklamıyoruz.
+          İçerik, analiz yapılabilmesi için sunucu altyapımıza ve analiz
+          sağlayıcımıza iletilir.
+        </p>
+
+        <h2>Analiz için hangi veriler işlenir?</h2>
+        <p>
+          Kullandığınız özelliğe göre analiz edilmesini istediğiniz mesaj metni,
+          bağlantı veya ekran görüntüsü işlenir. Bu içerik yalnızca talep
+          ettiğiniz risk analizini gerçekleştirmek için kullanılır.
+        </p>
+
+        <h2>AI sağlayıcısı</h2>
+        <p>
+          GüvenCheck analizlerinde OpenAI altyapısından yararlanır. OpenAI&apos;ye
+          gönderilen analiz isteklerinde kalıcı model depolaması kapalı olacak
+          şekilde <code>store: false</code> kullanılır. Bununla birlikte,
+          sağlayıcının güvenlik, kötüye kullanımın önlenmesi ve yasal
+          yükümlülükler kapsamında uyguladığı teknik kayıt süreçleri kendi
+          politikalarına tabi olabilir.
+        </p>
+
         <h2>Ekran görüntüleri</h2>
-        <p>Görseller gönderilmeden önce tarayıcıda küçültülür ve yeniden JPEG olarak kodlanır. Bu işlem dosya boyutunu azaltır ve orijinal dosyadaki bazı metadata alanlarının taşınmasını önler.</p>
-        <h2>Beta ölçümleri</h2>
-        <p>Ürün kalitesini ölçmek için analiz türü, risk skoru, kullanılan model rotası, gecikme, yaklaşık maliyet ve anonim geri bildirim gibi teknik sinyaller loglanabilir. Analiz metninin veya ekran görüntüsünün kendisini geri bildirim kaydına eklemeyiz.</p>
-        <h2>Önemli not</h2>
-        <p>GüvenCheck kesin dolandırıcılık veya güvenlik kararı vermez. Para, kimlik, parola, OTP veya başka hassas işlem öncesinde ilgili kurumu bağımsız resmî kanaldan doğrulayın.</p>
-        <p className="legalNote">Bu sayfa erken beta için sade bir şeffaflık özetidir; halka açık lansmandan önce KVKK kapsamındaki tam aydınlatma ve kullanım metinleri ayrıca hazırlanacaktır.</p>
-      <h2>Kapalı beta ölçümü</h2><p>Ürünü geliştirmek için tarayıcıda rastgele oluşturulan anonim oturum kimliği ile sayfa görüntüleme, analiz türü, sonuç seviyesi, yaklaşık gecikme, paylaşım ve faydalı/faydasız geri bildirim gibi ürün sinyalleri ölçülebilir. Analiz ettiğiniz mesaj, bağlantı veya ekran görüntüsü bu ölçüm olaylarının içine eklenmez.</p></section>
+        <p>
+          Web sürümünde seçilen görseller gönderilmeden önce küçültülebilir ve
+          yeniden kodlanabilir. Bu işlem dosya boyutunu azaltmaya ve orijinal
+          dosyadaki bazı metadata alanlarının taşınmasını sınırlamaya yardımcı
+          olur. Mobil uygulamada da analiz için gerekli görsel veri güvenli
+          bağlantı üzerinden sunucuya iletilir.
+        </p>
+
+        <h2>Ürün analitiği ve geri bildirim</h2>
+        <p>
+          Ürünün performansını ve sonuç kalitesini ölçmek için anonim oturum
+          kimliği, analiz türü, risk skoru ve seviyesi, kullanılan analiz rotası,
+          yaklaşık gecikme, paylaşım akışının başlatılması ve
+          faydalı/faydasız geri bildirim gibi teknik ürün sinyalleri
+          kaydedilebilir.
+        </p>
+        <p>
+          Analiz ettiğiniz mesajın, bağlantının veya ekran görüntüsünün kendisini
+          bu analitik ve geri bildirim kayıtlarının içine eklemiyoruz.
+        </p>
+
+        <h2>Verileri satıyor muyuz veya reklam amacıyla kullanıyor muyuz?</h2>
+        <p>
+          Analiz içeriğini satmıyoruz ve kişiselleştirilmiş reklam amacıyla
+          kullanmıyoruz.
+        </p>
+
+        <h2>Güvenlik ve sonuçların kapsamı</h2>
+        <p>
+          GüvenCheck kesin bir dolandırıcılık veya güvenlik kararı vermez; risk
+          sinyallerini değerlendirir. Belirgin risk sinyali bulunmaması, bir
+          içeriğin kesin olarak güvenli olduğu anlamına gelmez. Para, kimlik,
+          parola, OTP veya başka hassas bir işlem öncesinde ilgili kurumu kendi
+          bağımsız resmî kanalından doğrulayın.
+        </p>
+
+        <h2>KVKK ve aydınlatma</h2>
+        <p className="legalNote">
+          Bu sayfa GüvenCheck&apos;in mevcut ürün davranışını açıklayan sade
+          gizlilik özetidir. Ürün halka açık kullanıma genişletilmeden önce KVKK
+          kapsamındaki gerekli aydınlatma, saklama, başvuru ve iletişim
+          metinleri ayrıca yayımlanacaktır.
+        </p>
+      </section>
     </main>
   );
 }
