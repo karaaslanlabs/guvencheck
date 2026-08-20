@@ -1,0 +1,10 @@
+node_modules
+.expo
+.expo-preflight
+.git
+dist
+build
+*.apk
+*.aab
+*.log
+.DS_Store
