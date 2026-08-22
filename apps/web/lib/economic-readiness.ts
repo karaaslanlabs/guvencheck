@@ -32,14 +32,15 @@ export type EconomicGate = {
 export async function checkEconomicGate(): Promise<EconomicGate> {
   if (!aiAnalysisEnabled()) return { allowed: false, reason: "disabled" };
 
+  // Paid analysis is fail-safe: if persistent economic telemetry is not
+  // available, do not spend blindly. Local/demo mode can bypass this by not
+  // configuring an OpenAI API key.
+  if (!analyticsConfigured()) {
+    return { allowed: false, reason: "telemetry_unavailable" };
+  }
+
   const limit = configuredDailyCostLimitUsd();
   if (!limit) return { allowed: true };
-
-  // A configured spend ceiling is fail-safe: if persistent telemetry cannot be
-  // read, new paid AI calls are blocked rather than spending blindly.
-  if (!analyticsConfigured()) {
-    return { allowed: false, reason: "telemetry_unavailable", dailyLimitUsd: limit };
-  }
 
   try {
     const spent = await estimatedSpendSince(istanbulDayStartIso());
