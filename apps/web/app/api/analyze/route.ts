@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { aiAnalysisEnabled, checkEconomicGate, persistEconomicEvent } from "../../../lib/economic-readiness";
 import { preserveProductResultWithShadow } from "../../../lib/agent-platform-shadow";
 
 export const runtime = "nodejs";
@@ -125,7 +126,6 @@ function getUrlFacts(value: string) {
   };
 }
 
-
 const COMMON_SECOND_LEVEL_SUFFIXES = new Set([
   "com.tr", "net.tr", "org.tr", "gov.tr", "edu.tr", "bel.tr", "k12.tr",
   "co.uk", "org.uk", "ac.uk", "com.au", "net.au", "org.au", "co.jp", "co.nz"
@@ -234,7 +234,6 @@ function extractOutputText(data: any): string | undefined {
   return undefined;
 }
 
-
 function extractWebSources(data: any) {
   const seen = new Set<string>();
   const sources: Array<{ title: string; url: string }> = [];
@@ -263,7 +262,6 @@ function countWebSearchCalls(data: any) {
   return (data?.output || []).filter((item: any) => item?.type === "web_search_call").length;
 }
 
-
 function estimateApiCost(model: string, usage: any, webSearchCalls: number) {
   const input = Number(usage?.input_tokens || 0);
   const cached = Number(usage?.input_tokens_details?.cached_tokens || 0);
@@ -291,6 +289,56 @@ type ModelRun = {
   estimatedCostUsd: number | null;
   model: string;
 };
+
+type EconomicMeta = {
+  model?: string | null;
+  route?: string | null;
+  inputTokens?: number | null;
+  cachedInputTokens?: number | null;
+  outputTokens?: number | null;
+  totalTokens?: number | null;
+  webSearchCalls?: number | null;
+  latencyMs?: number | null;
+  estimatedCostUsd?: number | null;
+};
+
+async function persistSuccessfulEconomicUsage(requestId: string, type: Payload["type"], meta: EconomicMeta) {
+  return persistEconomicEvent({
+    analysis_request_id: requestId,
+    analysis_type: type,
+    provider: "openai",
+    model: meta.model || null,
+    model_route: meta.route || null,
+    input_tokens: meta.inputTokens ?? null,
+    cached_input_tokens: meta.cachedInputTokens ?? null,
+    output_tokens: meta.outputTokens ?? null,
+    total_tokens: meta.totalTokens ?? null,
+    web_search_calls: meta.webSearchCalls ?? null,
+    estimated_cost_usd: meta.estimatedCostUsd ?? null,
+    latency_ms: meta.latencyMs ?? null,
+    success: true,
+    error_class: null
+  });
+}
+
+async function persistFailedEconomicUsage(requestId: string, type: Payload["type"], latencyMs: number, errorClass: string) {
+  return persistEconomicEvent({
+    analysis_request_id: requestId,
+    analysis_type: type,
+    provider: "openai",
+    model: null,
+    model_route: "request_failed",
+    input_tokens: null,
+    cached_input_tokens: null,
+    output_tokens: null,
+    total_tokens: null,
+    web_search_calls: null,
+    estimated_cost_usd: null,
+    latency_ms: latencyMs,
+    success: false,
+    error_class: errorClass.slice(0, 120)
+  });
+}
 
 function criticalTextSignal(text: string) {
   return /(otp|doğrulama kodu|sms kodu|tek kullanımlık|şifre|parola|iban|havale|eft|usdt|btc|kripto|anydesk|teamviewer|uzaktan erişim|kart bilg|para gönder|kapora|güvenli hesap)/i.test(text);
@@ -421,6 +469,9 @@ async function runOpenAI(args: {
 export async function POST(req: NextRequest) {
   const startedAt = Date.now();
   const requestId = crypto.randomUUID().slice(0, 8);
+  let analysisType: Payload["type"] | null = null;
+  let paidAiStarted = false;
+
   const limit = checkRateLimit(req);
   const rateHeaders = {
     "X-RateLimit-Limit": String(RATE_LIMIT_MAX),
@@ -431,12 +482,14 @@ export async function POST(req: NextRequest) {
     const retryAfter = Math.max(1, Math.ceil((limit.resetAt - Date.now()) / 1000));
     return jsonNoStore({ error: "Beta kullanım sınırına ulaştın. Bir süre sonra yeniden deneyebilirsin.", requestId }, { status: 429, headers: { ...rateHeaders, "Retry-After": String(retryAfter) } });
   }
+
   try {
     const contentLength = Number(req.headers.get("content-length") || 0);
     if (contentLength > 6_000_000) return jsonNoStore({ error: "Gönderilen içerik çok büyük." }, { status: 413, headers: rateHeaders });
 
     const body = (await req.json()) as Payload;
     if (!body?.type || !["text", "link", "image"].includes(body.type)) return jsonNoStore({ error: "Geçersiz analiz türü." }, { status: 400, headers: rateHeaders });
+    analysisType = body.type;
 
     let text = (body.content || "").trim();
     if (text.length > MAX_TEXT_LENGTH) return jsonNoStore({ error: "Metin çok uzun. En fazla 12.000 karakter gönderilebilir." }, { status: 400, headers: rateHeaders });
@@ -451,6 +504,10 @@ export async function POST(req: NextRequest) {
     if (hasImage && body.imageData!.length > MAX_IMAGE_DATA_LENGTH) return jsonNoStore({ error: "Ekran görüntüsü işlendikten sonra hâlâ çok büyük." }, { status: 413, headers: rateHeaders });
     if (!hasImage && text.length < 3) return jsonNoStore({ error: "Analiz edilecek içerik bulunamadı." }, { status: 400, headers: rateHeaders });
 
+    if (!aiAnalysisEnabled()) {
+      return jsonNoStore({ error: "Analiz hizmeti şu anda geçici olarak kullanılamıyor. Lütfen daha sonra yeniden dene.", requestId }, { status: 503, headers: rateHeaders });
+    }
+
     const apiKey = process.env.OPENAI_API_KEY;
     const shadowInput = { type: body.type, content: text, imageData: body.imageData };
     const productResponse = async (result: any) => jsonNoStore(
@@ -459,10 +516,19 @@ export async function POST(req: NextRequest) {
     );
     if (!apiKey) return productResponse(demoAnalyze(text || "ekran görüntüsü"));
 
+    const economicGate = await checkEconomicGate();
+    if (!economicGate.allowed) {
+      console.warn("GUVENCHECK_ECONOMIC_GATE_BLOCK", requestId, economicGate.reason, economicGate.dailySpendUsd, economicGate.dailyLimitUsd);
+      return jsonNoStore({ error: "Analiz hizmeti şu anda geçici olarak kullanılamıyor. Lütfen daha sonra yeniden dene.", requestId }, { status: 503, headers: rateHeaders });
+    }
+    if (economicGate.approachingLimit) {
+      console.warn("GUVENCHECK_ECONOMIC_SPEND_WARNING", requestId, economicGate.dailySpendUsd, economicGate.dailyLimitUsd);
+    }
+
+    paidAiStarted = true;
     const fastModel = process.env.OPENAI_FAST_MODEL || "gpt-5.6-luna";
     const deepModel = process.env.OPENAI_DEEP_MODEL || process.env.OPENAI_MODEL || "gpt-5.6-terra";
 
-    // Lab A/B çağrıları tek modeli doğrudan test eder; üretim çağrıları hibrit yönlendirmeyi kullanır.
     if (body.benchmarkModel) {
       const run = await runOpenAI({ apiKey, model: body.benchmarkModel, type: body.type, text, imageData: body.imageData, useWeb: body.type === "link" });
       const meta = {
@@ -473,10 +539,10 @@ export async function POST(req: NextRequest) {
         calls: [{ model: run.model, costUsd: run.estimatedCostUsd, latencyMs: run.latencyMs, webSearchCalls: run.webSearchCalls }]
       };
       console.info("GUVENCHECK_USAGE", JSON.stringify({ requestId, type: body.type, ...meta }));
+      await persistSuccessfulEconomicUsage(requestId, body.type, meta);
       return productResponse({ ...run.analysis, sources: run.sources, mode: "ai", webVerified: body.type === "link" && run.webSearchCalls > 0, meta, requestId });
     }
 
-    // Doğrudan link sorguları harici doğrulama gerektirdiği için kalite modeline gider.
     if (body.type === "link") {
       const run = await runOpenAI({ apiKey, model: deepModel, type: "link", text, useWeb: true });
       const meta = {
@@ -487,6 +553,7 @@ export async function POST(req: NextRequest) {
         calls: [{ model: run.model, costUsd: run.estimatedCostUsd, latencyMs: run.latencyMs, webSearchCalls: run.webSearchCalls }]
       };
       console.info("GUVENCHECK_USAGE", JSON.stringify({ requestId, type: body.type, ...meta }));
+      await persistSuccessfulEconomicUsage(requestId, body.type, meta);
       return productResponse({ ...run.analysis, sources: run.sources, mode: "ai", webVerified: run.webSearchCalls > 0, meta, requestId });
     }
 
@@ -512,7 +579,6 @@ export async function POST(req: NextRequest) {
       } catch (err) {
         escalationFailure = err instanceof Error ? err.message : "SECOND_STAGE_FAILED";
         console.error("GUVENCHECK_ESCALATION_FALLBACK", requestId, `type=${body.type}`, `reasons=${escalationReasons.join(",")}`, escalationFailure);
-        // İlk Luna analizi kullanıcıya yine gösterilir; başarısız web/ikinci görüş doğrulanmış gibi sunulmaz.
         finalRun = {
           ...first,
           analysis: {
@@ -547,6 +613,7 @@ export async function POST(req: NextRequest) {
       calls: calls.map(c => ({ model: c.model, costUsd: c.estimatedCostUsd, latencyMs: c.latencyMs, webSearchCalls: c.webSearchCalls }))
     };
     console.info("GUVENCHECK_USAGE", JSON.stringify({ requestId, type: body.type, ...meta }));
+    await persistSuccessfulEconomicUsage(requestId, body.type, meta);
     return productResponse({
       ...finalRun.analysis,
       sources: finalRun.sources,
@@ -556,6 +623,10 @@ export async function POST(req: NextRequest) {
       requestId
     });
   } catch (error) {
+    const errorClass = error instanceof Error ? error.message : "UNKNOWN_ERROR";
+    if (paidAiStarted && analysisType) {
+      await persistFailedEconomicUsage(requestId, analysisType, Date.now() - startedAt, errorClass);
+    }
     if (error instanceof Error && error.name === "AbortError") return jsonNoStore({ error: "Analiz zaman aşımına uğradı. Otomatik tekrar denememiz de sonuç vermedi.", requestId }, { status: 504, headers: rateHeaders });
     if (error instanceof Error && (error.message.startsWith("OPENAI_REQUEST_FAILED") || error.message === "OPENAI_OUTPUT_MISSING" || error.message === "OPENAI_OUTPUT_INVALID")) {
       return jsonNoStore({ error: "AI analizi şu anda tamamlanamadı. Birkaç saniye sonra yeniden deneyebilirsin.", requestId }, { status: 502, headers: rateHeaders });
