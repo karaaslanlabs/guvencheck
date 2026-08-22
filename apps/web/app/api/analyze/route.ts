@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { aiAnalysisEnabled, checkEconomicGate, persistEconomicEvent } from "../../../lib/economic-readiness";
+import { preserveProductResultWithShadow } from "../../../lib/agent-platform-shadow";
 
 export const runtime = "nodejs";
 
@@ -508,7 +509,12 @@ export async function POST(req: NextRequest) {
     }
 
     const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) return jsonNoStore(demoAnalyze(text || "ekran görüntüsü"), { headers: rateHeaders });
+    const shadowInput = { type: body.type, content: text, imageData: body.imageData };
+    const productResponse = async (result: any) => jsonNoStore(
+      await preserveProductResultWithShadow(result, shadowInput, requestId),
+      { headers: rateHeaders },
+    );
+    if (!apiKey) return productResponse(demoAnalyze(text || "ekran görüntüsü"));
 
     const economicGate = await checkEconomicGate();
     if (!economicGate.allowed) {
@@ -534,7 +540,7 @@ export async function POST(req: NextRequest) {
       };
       console.info("GUVENCHECK_USAGE", JSON.stringify({ requestId, type: body.type, ...meta }));
       await persistSuccessfulEconomicUsage(requestId, body.type, meta);
-      return jsonNoStore({ ...run.analysis, sources: run.sources, mode: "ai", webVerified: body.type === "link" && run.webSearchCalls > 0, meta, requestId }, { headers: rateHeaders });
+      return productResponse({ ...run.analysis, sources: run.sources, mode: "ai", webVerified: body.type === "link" && run.webSearchCalls > 0, meta, requestId });
     }
 
     if (body.type === "link") {
@@ -548,7 +554,7 @@ export async function POST(req: NextRequest) {
       };
       console.info("GUVENCHECK_USAGE", JSON.stringify({ requestId, type: body.type, ...meta }));
       await persistSuccessfulEconomicUsage(requestId, body.type, meta);
-      return jsonNoStore({ ...run.analysis, sources: run.sources, mode: "ai", webVerified: run.webSearchCalls > 0, meta, requestId }, { headers: rateHeaders });
+      return productResponse({ ...run.analysis, sources: run.sources, mode: "ai", webVerified: run.webSearchCalls > 0, meta, requestId });
     }
 
     const first = await runOpenAI({ apiKey, model: fastModel, type: body.type, text, imageData: body.imageData, useWeb: false });
@@ -608,14 +614,14 @@ export async function POST(req: NextRequest) {
     };
     console.info("GUVENCHECK_USAGE", JSON.stringify({ requestId, type: body.type, ...meta }));
     await persistSuccessfulEconomicUsage(requestId, body.type, meta);
-    return jsonNoStore({
+    return productResponse({
       ...finalRun.analysis,
       sources: finalRun.sources,
       mode: "ai",
       webVerified: finalRun.webSearchCalls > 0,
       meta,
       requestId
-    }, { headers: rateHeaders });
+    });
   } catch (error) {
     const errorClass = error instanceof Error ? error.message : "UNKNOWN_ERROR";
     if (paidAiStarted && analysisType) {

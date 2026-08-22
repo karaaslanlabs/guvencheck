@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.ts",
+    "evidence:m2.2": "node scripts/m2-2-callsite-evidence.mjs"
   },
   "dependencies": {
     "next": "^16.3.0",
