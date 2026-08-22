@@ -51,15 +51,18 @@ export default function PrivacyPage() {
 
         <h2>Ürün analitiği ve geri bildirim</h2>
         <p>
-          Ürünün performansını ve sonuç kalitesini ölçmek için anonim oturum
-          kimliği, analiz türü, risk skoru ve seviyesi, kullanılan analiz rotası,
-          yaklaşık gecikme, paylaşım akışının başlatılması ve
+          Ürünün performansını, sonuç kalitesini ve AI kullanım maliyetini
+          ölçmek için anonim oturum kimliği, analiz türü, risk skoru ve seviyesi,
+          kullanılan analiz rotası, AI sağlayıcısı/modeli, token kullanım
+          miktarları, varsa web araması çağrı sayısı, tahmini API maliyeti,
+          yaklaşık gecikme, başarı/hata durumu, paylaşım akışının başlatılması ve
           faydalı/faydasız geri bildirim gibi teknik ürün sinyalleri
           kaydedilebilir.
         </p>
         <p>
           Analiz ettiğiniz mesajın, bağlantının veya ekran görüntüsünün kendisini
-          bu analitik ve geri bildirim kayıtlarının içine eklemiyoruz.
+          bu analitik, ekonomik kullanım ve geri bildirim kayıtlarının içine
+          eklemiyoruz.
         </p>
 
         <h2>Verileri satıyor muyuz veya reklam amacıyla kullanıyor muyuz?</h2>
