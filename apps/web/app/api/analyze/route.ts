@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { preserveProductResultWithShadow } from "../../../lib/agent-platform-shadow";
 
 export const runtime = "nodejs";
 
@@ -451,7 +452,12 @@ export async function POST(req: NextRequest) {
     if (!hasImage && text.length < 3) return jsonNoStore({ error: "Analiz edilecek içerik bulunamadı." }, { status: 400, headers: rateHeaders });
 
     const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) return jsonNoStore(demoAnalyze(text || "ekran görüntüsü"), { headers: rateHeaders });
+    const shadowInput = { type: body.type, content: text, imageData: body.imageData };
+    const productResponse = async (result: any) => jsonNoStore(
+      await preserveProductResultWithShadow(result, shadowInput, requestId),
+      { headers: rateHeaders },
+    );
+    if (!apiKey) return productResponse(demoAnalyze(text || "ekran görüntüsü"));
 
     const fastModel = process.env.OPENAI_FAST_MODEL || "gpt-5.6-luna";
     const deepModel = process.env.OPENAI_DEEP_MODEL || process.env.OPENAI_MODEL || "gpt-5.6-terra";
@@ -467,7 +473,7 @@ export async function POST(req: NextRequest) {
         calls: [{ model: run.model, costUsd: run.estimatedCostUsd, latencyMs: run.latencyMs, webSearchCalls: run.webSearchCalls }]
       };
       console.info("GUVENCHECK_USAGE", JSON.stringify({ requestId, type: body.type, ...meta }));
-      return jsonNoStore({ ...run.analysis, sources: run.sources, mode: "ai", webVerified: body.type === "link" && run.webSearchCalls > 0, meta, requestId }, { headers: rateHeaders });
+      return productResponse({ ...run.analysis, sources: run.sources, mode: "ai", webVerified: body.type === "link" && run.webSearchCalls > 0, meta, requestId });
     }
 
     // Doğrudan link sorguları harici doğrulama gerektirdiği için kalite modeline gider.
@@ -481,7 +487,7 @@ export async function POST(req: NextRequest) {
         calls: [{ model: run.model, costUsd: run.estimatedCostUsd, latencyMs: run.latencyMs, webSearchCalls: run.webSearchCalls }]
       };
       console.info("GUVENCHECK_USAGE", JSON.stringify({ requestId, type: body.type, ...meta }));
-      return jsonNoStore({ ...run.analysis, sources: run.sources, mode: "ai", webVerified: run.webSearchCalls > 0, meta, requestId }, { headers: rateHeaders });
+      return productResponse({ ...run.analysis, sources: run.sources, mode: "ai", webVerified: run.webSearchCalls > 0, meta, requestId });
     }
 
     const first = await runOpenAI({ apiKey, model: fastModel, type: body.type, text, imageData: body.imageData, useWeb: false });
@@ -541,14 +547,14 @@ export async function POST(req: NextRequest) {
       calls: calls.map(c => ({ model: c.model, costUsd: c.estimatedCostUsd, latencyMs: c.latencyMs, webSearchCalls: c.webSearchCalls }))
     };
     console.info("GUVENCHECK_USAGE", JSON.stringify({ requestId, type: body.type, ...meta }));
-    return jsonNoStore({
+    return productResponse({
       ...finalRun.analysis,
       sources: finalRun.sources,
       mode: "ai",
       webVerified: finalRun.webSearchCalls > 0,
       meta,
       requestId
-    }, { headers: rateHeaders });
+    });
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") return jsonNoStore({ error: "Analiz zaman aşımına uğradı. Otomatik tekrar denememiz de sonuç vermedi.", requestId }, { status: 504, headers: rateHeaders });
     if (error instanceof Error && (error.message.startsWith("OPENAI_REQUEST_FAILED") || error.message === "OPENAI_OUTPUT_MISSING" || error.message === "OPENAI_OUTPUT_INVALID")) {

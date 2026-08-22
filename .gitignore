@@ -7,6 +7,7 @@ build
 *.apk
 *.aab
 *.log
+*.tsbuildinfo
 .env
 .env.*
 !.env.example
