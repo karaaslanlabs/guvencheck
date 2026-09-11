@@ -46,6 +46,9 @@ type NegativeFeedbackReason =
   | 'fazla_supheci'
   | 'riski_az_gosterdi'
   | 'anlasilmadi'
+  | 'karar_net_degildi'
+  | 'sonraki_adim_net_degildi'
+  | 'belirsizlik_anlasilmadi'
   | 'diger';
 
 const negativeFeedbackReasons: Array<{
@@ -55,6 +58,9 @@ const negativeFeedbackReasons: Array<{
   { key: 'fazla_supheci', label: 'Fazla şüpheciydi' },
   { key: 'riski_az_gosterdi', label: 'Riski az gösterdi' },
   { key: 'anlasilmadi', label: 'Açıklama anlaşılmadı' },
+  { key: 'karar_net_degildi', label: 'Karar vermemi kolaylaştırmadı' },
+  { key: 'sonraki_adim_net_degildi', label: 'Sonraki adım net değildi' },
+  { key: 'belirsizlik_anlasilmadi', label: 'Belirsizlik açıklaması anlaşılmadı' },
   { key: 'diger', label: 'Diğer' },
 ];
 

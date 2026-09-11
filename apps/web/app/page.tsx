@@ -506,6 +506,9 @@ export default function Home() {
                 <button onClick={() => sendFeedback(false, "fazla_supheci")}>Fazla şüpheciydi</button>
                 <button onClick={() => sendFeedback(false, "riski_az_gosterdi")}>Riski az gösterdi</button>
                 <button onClick={() => sendFeedback(false, "anlasilmadi")}>Açıklama anlaşılmadı</button>
+                <button onClick={() => sendFeedback(false, "karar_net_degildi")}>Karar vermemi kolaylaştırmadı</button>
+                <button onClick={() => sendFeedback(false, "sonraki_adim_net_degildi")}>Sonraki adım net değildi</button>
+                <button onClick={() => sendFeedback(false, "belirsizlik_anlasilmadi")}>Belirsizlik açıklaması anlaşılmadı</button>
                 <button onClick={() => sendFeedback(false, "diger")}>Diğer</button>
               </div>
             ) : (

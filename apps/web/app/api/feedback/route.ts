@@ -14,7 +14,7 @@ type FeedbackBody = {
   sessionId?: string;
 };
 
-const allowedReasons = new Set(["dogru", "fazla_supheci", "riski_az_gosterdi", "anlasilmadi", "diger"]);
+const allowedReasons = new Set(["dogru", "fazla_supheci", "riski_az_gosterdi", "anlasilmadi", "karar_net_degildi", "sonraki_adim_net_degildi", "belirsizlik_anlasilmadi", "diger"]);
 
 export async function POST(req: NextRequest) {
   try {

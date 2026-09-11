@@ -9,6 +9,9 @@ const reasonLabels: Record<string,string> = {
   fazla_supheci: "Fazla şüpheciydi",
   riski_az_gosterdi: "Riski az gösterdi",
   anlasilmadi: "Açıklama anlaşılmadı",
+  karar_net_degildi: "Karar vermemi kolaylaştırmadı",
+  sonraki_adim_net_degildi: "Sonraki adım net değildi",
+  belirsizlik_anlasilmadi: "Belirsizlik açıklaması anlaşılmadı",
   diger: "Diğer"
 };
 const typeLabels: Record<string,string> = { text: "Mesaj", link: "Link", image: "Ekran görüntüsü" };

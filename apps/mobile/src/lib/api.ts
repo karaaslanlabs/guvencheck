@@ -19,7 +19,7 @@ export async function analyze(input: { type: AnalysisType; content?: string; ima
 
 export type FeedbackInput = {
   helpful: boolean;
-  reason?: 'dogru' | 'fazla_supheci' | 'riski_az_gosterdi' | 'anlasilmadi' | 'diger';
+  reason?: 'dogru' | 'fazla_supheci' | 'riski_az_gosterdi' | 'anlasilmadi' | 'karar_net_degildi' | 'sonraki_adim_net_degildi' | 'belirsizlik_anlasilmadi' | 'diger';
   analysisType?: AnalysisType;
   score?: number;
   level?: 'low' | 'medium' | 'high';
