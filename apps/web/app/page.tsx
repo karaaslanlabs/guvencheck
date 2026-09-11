@@ -472,7 +472,7 @@ export default function Home() {
 
           {analysis.decisionSupport && (
             <div className="section decisionSupport">
-              <h3>Karar için ne anlama geliyor?</h3>
+              <h3>Bu sonuç kararını nasıl etkiliyor?</h3>
               <p><strong>Belirsizlik: {uncertaintyText[analysis.decisionSupport.uncertainty]}</strong> — {analysis.decisionSupport.uncertaintySummary}</p>
               <p><strong>Karar etkisi:</strong> {analysis.decisionSupport.implication}</p>
               <p><strong>Güvenli sonraki adım:</strong> {analysis.decisionSupport.nextAction}</p>
