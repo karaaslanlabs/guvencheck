@@ -289,7 +289,7 @@ export function ResultCard({
 
       {result.decisionSupport && (
         <View style={styles.decisionSupport}>
-          <Text style={styles.decisionSupportTitle}>Karar için ne anlama geliyor?</Text>
+          <Text style={styles.decisionSupportTitle}>Bu sonuç kararını nasıl etkiliyor?</Text>
           <Text style={styles.decisionSupportText}>
             <Text style={styles.decisionSupportStrong}>Belirsizlik: {uncertaintyText[result.decisionSupport.uncertainty]}</Text>
             {' — '}{result.decisionSupport.uncertaintySummary}
