@@ -12,7 +12,7 @@ create table if not exists public.beta_events (
   model_route text,
   latency_ms integer check (latency_ms is null or latency_ms >= 0),
   helpful boolean,
-  feedback_reason text check (feedback_reason is null or feedback_reason in ('dogru','fazla_supheci','riski_az_gosterdi','anlasilmadi','diger')),
+  feedback_reason text check (feedback_reason is null or feedback_reason in ('dogru','fazla_supheci','riski_az_gosterdi','anlasilmadi','karar_net_degildi','sonraki_adim_net_degildi','belirsizlik_anlasilmadi','diger')),
   analysis_request_id text
 );
 

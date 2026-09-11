@@ -18,6 +18,12 @@ const levelAdvice = {
   low: 'Belirgin risk görünmüyor; yine de hassas işlem öncesi resmî kanalı kullan.',
 } as const;
 
+const uncertaintyText = {
+  low: 'Düşük',
+  medium: 'Orta',
+  high: 'Yüksek',
+} as const;
+
 const riskPalette = {
   high: {
     accent: '#FF8A86',
@@ -40,6 +46,9 @@ type NegativeFeedbackReason =
   | 'fazla_supheci'
   | 'riski_az_gosterdi'
   | 'anlasilmadi'
+  | 'karar_net_degildi'
+  | 'sonraki_adim_net_degildi'
+  | 'belirsizlik_anlasilmadi'
   | 'diger';
 
 const negativeFeedbackReasons: Array<{
@@ -49,6 +58,9 @@ const negativeFeedbackReasons: Array<{
   { key: 'fazla_supheci', label: 'Fazla şüpheciydi' },
   { key: 'riski_az_gosterdi', label: 'Riski az gösterdi' },
   { key: 'anlasilmadi', label: 'Açıklama anlaşılmadı' },
+  { key: 'karar_net_degildi', label: 'Karar vermemi kolaylaştırmadı' },
+  { key: 'sonraki_adim_net_degildi', label: 'Sonraki adım net değildi' },
+  { key: 'belirsizlik_anlasilmadi', label: 'Belirsizlik açıklaması anlaşılmadı' },
   { key: 'diger', label: 'Diğer' },
 ];
 
@@ -273,6 +285,22 @@ export function ResultCard({
           Belirgin risk sinyali bulunmadı. Bu, içeriğin kesin olarak güvenli
           olduğu anlamına gelmez; hassas işlem öncesi resmî kanaldan doğrula.
         </Text>
+      )}
+
+      {result.decisionSupport && (
+        <View style={styles.decisionSupport}>
+          <Text style={styles.decisionSupportTitle}>Karar için ne anlama geliyor?</Text>
+          <Text style={styles.decisionSupportText}>
+            <Text style={styles.decisionSupportStrong}>Belirsizlik: {uncertaintyText[result.decisionSupport.uncertainty]}</Text>
+            {' — '}{result.decisionSupport.uncertaintySummary}
+          </Text>
+          <Text style={styles.decisionSupportText}>
+            <Text style={styles.decisionSupportStrong}>Karar etkisi:</Text> {result.decisionSupport.implication}
+          </Text>
+          <Text style={styles.decisionSupportText}>
+            <Text style={styles.decisionSupportStrong}>Güvenli sonraki adım:</Text> {result.decisionSupport.nextAction}
+          </Text>
+        </View>
       )}
 
       <Text style={styles.section}>Neden böyle düşünüyoruz?</Text>
@@ -630,6 +658,28 @@ const styles = StyleSheet.create({
     padding: 13,
     fontSize: 12,
     lineHeight: 18,
+  },
+  decisionSupport: {
+    backgroundColor: '#0A241E',
+    borderWidth: 1,
+    borderColor: '#315A4F',
+    borderRadius: 14,
+    padding: 14,
+    gap: 7,
+  },
+  decisionSupportTitle: {
+    color: '#F4FFF9',
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  decisionSupportText: {
+    color: '#C9DED6',
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  decisionSupportStrong: {
+    color: '#E9FFF6',
+    fontWeight: '900',
   },
   section: {
     color: '#F4FFF9',

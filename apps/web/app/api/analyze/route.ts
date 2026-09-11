@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { aiAnalysisEnabled, checkEconomicGate, persistEconomicEvent } from "../../../lib/economic-readiness";
 import { preserveProductResultWithShadow } from "../../../lib/agent-platform-shadow";
+import { withDecisionSupport } from "../../../lib/decision-support";
 
 export const runtime = "nodejs";
 
@@ -511,7 +512,7 @@ export async function POST(req: NextRequest) {
     const apiKey = process.env.OPENAI_API_KEY;
     const shadowInput = { type: body.type, content: text, imageData: body.imageData };
     const productResponse = async (result: any) => jsonNoStore(
-      await preserveProductResultWithShadow(result, shadowInput, requestId),
+      await preserveProductResultWithShadow(withDecisionSupport(result), shadowInput, requestId),
       { headers: rateHeaders },
     );
     if (!apiKey) return productResponse(demoAnalyze(text || "ekran görüntüsü"));

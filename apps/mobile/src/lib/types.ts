@@ -12,5 +12,11 @@ export type AnalysisResult = {
   mode: 'ai' | 'demo';
   verifiedFindings?: string[];
   sources?: { title: string; url: string }[];
+  decisionSupport?: {
+    uncertainty: 'low' | 'medium' | 'high';
+    uncertaintySummary: string;
+    implication: string;
+    nextAction: string;
+  };
   meta?: { route?: string; latencyMs?: number; escalated?: boolean; firstScore?: number };
 };

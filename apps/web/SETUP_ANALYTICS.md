@@ -12,3 +12,7 @@
 7. Bir analiz + geri bildirim yaptıktan sonra `/admin` adresine gidin. Tarayıcı parola ekranında kullanıcı adına herhangi bir şey, parola olarak `ADMIN_ACCESS_KEY` girin.
 
 Güvenlik: `SUPABASE_SECRET_KEY` hiçbir zaman GitHub'a, tarayıcı koduna veya sohbete yapıştırılmamalıdır.
+
+## Mevcut beta kurulumunu decision-support feedback için güncelleme
+
+Mevcut `beta_events` tablosu zaten varsa `supabase-decision-feedback-migration.sql` dosyasını Supabase SQL Editor'da bir kez çalıştırın. Bu işlem mevcut veriyi silmez; yalnızca izin verilen geri bildirim nedenlerini genişletir.

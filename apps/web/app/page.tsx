@@ -19,6 +19,12 @@ type Analysis = {
   sources?: Array<{ title: string; url: string }>;
   webVerified?: boolean;
   mode?: "ai" | "demo";
+  decisionSupport?: {
+    uncertainty: "low" | "medium" | "high";
+    uncertaintySummary: string;
+    implication: string;
+    nextAction: string;
+  };
   meta?: {
     version?: string;
     model?: string;
@@ -48,6 +54,8 @@ const shortLevelText: Record<RiskLevel, string> = {
   medium: "Dikkatli ol",
   high: "Yüksek risk",
 };
+
+const uncertaintyText = { low: "Düşük", medium: "Orta", high: "Yüksek" } as const;
 
 function normalizeUrl(value: string) {
   const trimmed = value.trim();
@@ -462,6 +470,15 @@ export default function Home() {
           </div>
           {analysis.level === "low" && <p className="lowRiskCaveat">Belirgin risk görülmemesi, içeriğin kesin olarak güvenli olduğu anlamına gelmez.</p>}
 
+          {analysis.decisionSupport && (
+            <div className="section decisionSupport">
+              <h3>Karar için ne anlama geliyor?</h3>
+              <p><strong>Belirsizlik: {uncertaintyText[analysis.decisionSupport.uncertainty]}</strong> — {analysis.decisionSupport.uncertaintySummary}</p>
+              <p><strong>Karar etkisi:</strong> {analysis.decisionSupport.implication}</p>
+              <p><strong>Güvenli sonraki adım:</strong> {analysis.decisionSupport.nextAction}</p>
+            </div>
+          )}
+
           <div className="section compactReasons">
             <h3>Neden böyle düşünüyoruz?</h3>
             <ul>{analysis.signals.slice(0, 3).map((s, i) => <li key={i}><span className="listIcon">✓</span><span>{s}</span></li>)}</ul>
@@ -489,6 +506,9 @@ export default function Home() {
                 <button onClick={() => sendFeedback(false, "fazla_supheci")}>Fazla şüpheciydi</button>
                 <button onClick={() => sendFeedback(false, "riski_az_gosterdi")}>Riski az gösterdi</button>
                 <button onClick={() => sendFeedback(false, "anlasilmadi")}>Açıklama anlaşılmadı</button>
+                <button onClick={() => sendFeedback(false, "karar_net_degildi")}>Karar vermemi kolaylaştırmadı</button>
+                <button onClick={() => sendFeedback(false, "sonraki_adim_net_degildi")}>Sonraki adım net değildi</button>
+                <button onClick={() => sendFeedback(false, "belirsizlik_anlasilmadi")}>Belirsizlik açıklaması anlaşılmadı</button>
                 <button onClick={() => sendFeedback(false, "diger")}>Diğer</button>
               </div>
             ) : (
