@@ -4,6 +4,7 @@ import { preserveProductResultWithShadow } from "../../../lib/agent-platform-sha
 import { withDecisionSupport } from "../../../lib/decision-support";
 import { MANIPULATION_TACTICS, sanitizeManipulationTactics } from "../../../lib/manipulation-lens";
 import { sanitizeProtectionCandidate } from "../../../lib/commitment-protection";
+import { linkEscalationReasons } from "../../../lib/link-routing";
 
 export const runtime = "nodejs";
 
@@ -420,7 +421,9 @@ async function runOpenAI(args: {
 
   let prompt: string;
   if (args.type === "link") {
-    prompt = `Bu URL için URL yapısını ve güncel harici risk sinyallerini birlikte değerlendir. Web aramasını mutlaka kullan. Exact domaini; domain + dolandırıcılık, scam, phishing ve şikayet sorgularını araştır. Marka çağrışımı varsa gerçek resmî alan adıyla karşılaştır. Hedef sitenin kendi içeriğini bağımsız güven kanıtı sayma; şikâyet platformlarını da kullanıcı bildirimi olarak etiketle. Kanıt yetersizse açıkça söyle ve güvenli olduğu sonucuna atlama. URL: ${args.text}\nDeterministik URL özellikleri: ${JSON.stringify(getUrlFacts(args.text))}\nAlan adı güven gerçekleri: ${JSON.stringify(getDomainTrustFacts(args.text))}. Web aramasında özellikle rootDomain için resmî kurum/marka eşleşmesini doğrula.`;
+    prompt = args.useWeb
+      ? `Bu URL için URL yapısını ve güncel harici risk sinyallerini birlikte değerlendir. Web aramasını mutlaka kullan. Exact domaini; domain + dolandırıcılık, scam, phishing ve şikayet sorgularını araştır. Marka çağrışımı varsa gerçek resmî alan adıyla karşılaştır. Hedef sitenin kendi içeriğini bağımsız güven kanıtı sayma; şikâyet platformlarını da kullanıcı bildirimi olarak etiketle. Kanıt yetersizse açıkça söyle ve güvenli olduğu sonucuna atlama. URL: ${args.text}\nDeterministik URL özellikleri: ${JSON.stringify(getUrlFacts(args.text))}\nAlan adı güven gerçekleri: ${JSON.stringify(getDomainTrustFacts(args.text))}. Web aramasında özellikle rootDomain için resmî kurum/marka eşleşmesini doğrula.`
+      : `Bu URL'yi yalnız URL yapısı ve içerikte görünen sinyaller üzerinden hızlı ön değerlendirmeden geçir. Harici web doğrulaması yapmadığını açıkça belirt; güncel itibar veya resmî alan adı eşleşmesi uydurma. URL: ${args.text}\nDeterministik URL özellikleri: ${JSON.stringify(getUrlFacts(args.text))}\nAlan adı güven gerçekleri: ${JSON.stringify(getDomainTrustFacts(args.text))}.`;
   } else if (args.type === "text") {
     prompt = `Bu mesajı dijital dolandırıcılık ve sosyal mühendislik risk sinyalleri açısından değerlendir:\n\n${args.text}`;
   } else {
@@ -588,36 +591,23 @@ export async function POST(req: NextRequest) {
       return productResponse({ ...run.analysis, sources: run.sources, mode: "ai", webVerified: body.type === "link" && run.webSearchCalls > 0, meta, requestId });
     }
 
-    if (body.type === "link") {
-      const run = await runOpenAI({ apiKey, model: deepModel, type: "link", text, useWeb: true });
-      const meta = {
-        version: "0.6.1", model: run.model, route: "terra-web", escalated: true, escalationReasons: ["link_web_verification"],
-        inputTokens: run.usage?.input_tokens ?? null, cachedInputTokens: run.usage?.input_tokens_details?.cached_tokens ?? 0,
-        outputTokens: run.usage?.output_tokens ?? null, totalTokens: run.usage?.total_tokens ?? null,
-        webSearchCalls: run.webSearchCalls, latencyMs: Date.now() - startedAt, estimatedCostUsd: run.estimatedCostUsd,
-        calls: [{ model: run.model, costUsd: run.estimatedCostUsd, latencyMs: run.latencyMs, webSearchCalls: run.webSearchCalls }]
-      };
-      console.info("GUVENCHECK_USAGE", JSON.stringify({ requestId, type: body.type, ...meta }));
-      await persistSuccessfulEconomicUsage(requestId, body.type, meta);
-      return productResponse({ ...run.analysis, sources: run.sources, mode: "ai", webVerified: run.webSearchCalls > 0, meta, requestId });
-    }
-
     const first = await runOpenAI({ apiKey, model: fastModel, type: body.type, text, imageData: body.imageData, useWeb: false });
     const firstAnalysis = first.analysis;
-    const foundUrls = uniqueUrls(firstAnalysis.extractedUrls || []);
+    const foundUrls = uniqueUrls(body.type === "link" ? [text, ...(firstAnalysis.extractedUrls || [])] : (firstAnalysis.extractedUrls || []));
     const escalationReasons: string[] = [];
-    if (firstAnalysis.score >= 25 && firstAnalysis.score <= 75) escalationReasons.push("gray_zone_score");
-    if (firstAnalysis.confidence === "low") escalationReasons.push("low_confidence");
+    if (body.type !== "link" && firstAnalysis.score >= 25 && firstAnalysis.score <= 75) escalationReasons.push("gray_zone_score");
+    if (body.type !== "link" && firstAnalysis.confidence === "low") escalationReasons.push("low_confidence");
     if (body.type === "image" && foundUrls.length > 0) escalationReasons.push("image_contains_url");
     if (body.type === "text" && foundUrls.length > 0 && firstAnalysis.score < 85) escalationReasons.push("text_contains_url");
     if (body.type === "text" && criticalTextSignal(text) && firstAnalysis.score < 76) escalationReasons.push("critical_terms_need_review");
+    if (body.type === "link") escalationReasons.push(...linkEscalationReasons(firstAnalysis, getUrlFacts(text)));
 
     const shouldEscalate = escalationReasons.length > 0;
     let finalRun = first;
     let second: ModelRun | null = null;
     let escalationFailure: string | null = null;
     if (shouldEscalate) {
-      const useWeb = foundUrls.length > 0;
+      const useWeb = body.type === "link" || foundUrls.length > 0;
       try {
         second = await runOpenAI({ apiKey, model: deepModel, type: body.type, text, imageData: body.imageData, useWeb, prior: firstAnalysis });
         finalRun = second;
@@ -629,7 +619,7 @@ export async function POST(req: NextRequest) {
           analysis: {
             ...first.analysis,
             verificationStatus: "not_checked",
-            verificationSummary: "İkinci aşama harici doğrulama tamamlanamadı. İlk görsel/metin analizi gösteriliyor; hassas işlem öncesinde kurumu kendi resmî kanalından bağımsız doğrula.",
+            verificationSummary: "İkinci aşama harici doğrulama tamamlanamadı. İlk hızlı analiz gösteriliyor; hassas işlem öncesinde kurumu kendi resmî kanalından bağımsız doğrula.",
             verifiedFindings: []
           },
           sources: [],
@@ -648,7 +638,9 @@ export async function POST(req: NextRequest) {
     const meta = {
       version: "0.6.1",
       model: shouldEscalate ? `${fastModel} → ${deepModel}` : fastModel,
-      route: escalationFailure ? "hybrid-fallback-fast" : (shouldEscalate ? "hybrid-escalated" : "luna-fast-path"),
+      route: body.type === "link"
+        ? (escalationFailure ? "link-hybrid-fallback-fast" : (shouldEscalate ? "link-hybrid-escalated" : "link-luna-fast-path"))
+        : (escalationFailure ? "hybrid-fallback-fast" : (shouldEscalate ? "hybrid-escalated" : "luna-fast-path")),
       escalated: shouldEscalate,
       escalationReasons,
       escalationFailure,
