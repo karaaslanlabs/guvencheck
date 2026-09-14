@@ -2,6 +2,7 @@ export type BetaEventRow = {
   id?: number;
   created_at?: string;
   event_type: string;
+  event_value?: string | null;
   session_id?: string | null;
   analysis_type?: "text" | "link" | "image" | null;
   score?: number | null;
@@ -69,7 +70,7 @@ export async function insertBetaEvent(row: BetaEventRow) {
 
 export async function readBetaEvents(limit = 5000): Promise<BetaEventRow[]> {
   const safeLimit = Math.max(1, Math.min(10000, Math.round(limit)));
-  const fields = "id,created_at,event_type,session_id,analysis_type,score,risk_level,model_route,latency_ms,helpful,feedback_reason,analysis_request_id";
+  const fields = "id,created_at,event_type,event_value,session_id,analysis_type,score,risk_level,model_route,latency_ms,helpful,feedback_reason,analysis_request_id";
   const res = await supabaseFetch(`beta_events?select=${fields}&order=created_at.desc&limit=${safeLimit}`);
   if (!res.ok) {
     const detail = (await res.text()).slice(0, 400);

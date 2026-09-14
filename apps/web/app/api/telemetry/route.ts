@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { analyticsConfigured, insertBetaEvent } from "../../../lib/supabase-rest";
+import { sanitizeRevenueEvidence } from "../../../lib/revenue-evidence";
 
 export const runtime = "nodejs";
 
-const allowedEvents = new Set(["page_view","analysis_started","analysis_completed","analysis_error","share_clicked","privacy_view","protection_save_intent","protection_saved","protection_removed","protection_status_view","protection_event_useful","repeat_protection","deep_verification_eligible","deep_verification_interest","trusted_helper_share"]);
+const allowedEvents = new Set(["page_view","analysis_started","analysis_completed","analysis_error","share_clicked","privacy_view","protection_save_intent","protection_saved","protection_removed","protection_status_view","protection_event_useful","repeat_protection","deep_verification_eligible","deep_verification_interest","trusted_helper_share","core_decision_value","payer_role","payment_interest"]);
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     if (!allowedEvents.has(body?.event)) return NextResponse.json({ error: "Geçersiz olay." }, { status: 400, headers: { "Cache-Control": "no-store" } });
+    const eventValue = sanitizeRevenueEvidence(body.event, body.value);
+    if (eventValue === null) return NextResponse.json({ error: "Geçersiz kanıt değeri." }, { status: 400, headers: { "Cache-Control": "no-store" } });
     const event = {
       event: body.event,
       sessionId: typeof body.sessionId === "string" ? body.sessionId.slice(0,64) : undefined,
@@ -17,6 +20,7 @@ export async function POST(req: NextRequest) {
       level: ["low","medium","high"].includes(body.level) ? body.level : undefined,
       route: typeof body.route === "string" ? body.route.slice(0,120) : undefined,
       latencyMs: typeof body.latencyMs === "number" ? Math.max(0,Math.round(body.latencyMs)) : undefined,
+      eventValue,
       at: new Date().toISOString()
     };
 
@@ -31,7 +35,8 @@ export async function POST(req: NextRequest) {
           score: event.score,
           risk_level: event.level,
           model_route: event.route,
-          latency_ms: event.latencyMs
+          latency_ms: event.latencyMs,
+          event_value: event.eventValue
         });
       } catch (error) {
         console.error("GUVENCHECK_ANALYTICS_WRITE_ERROR", error instanceof Error ? error.message : String(error));

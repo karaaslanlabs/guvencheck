@@ -113,6 +113,7 @@ export function ResultCard({
       });
       setFeedback(helpful ? 'yes' : 'no');
       setShowNegativeReasons(false);
+      if (helpful) void sendTelemetry({ event: 'core_decision_value', sessionId, analysisType }).catch(() => {});
     } catch (error) {
       setFeedbackError(
         error instanceof Error

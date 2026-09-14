@@ -56,6 +56,8 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
   const [protectionDraft, setProtectionDraft] = useState<ProtectionCandidate | null>(null);
   const [protectionUsefulSent, setProtectionUsefulSent] = useState(false);
   const [deepVerificationInterested, setDeepVerificationInterested] = useState(false);
+  const [payerRole, setPayerRole] = useState<'self' | 'family' | 'work' | ''>('');
+  const [paymentInterest, setPaymentInterest] = useState<'yes' | 'maybe' | 'no' | ''>('');
 
   async function ensureSessionId() {
     if (sessionIdRef.current) return sessionIdRef.current;
@@ -124,6 +126,8 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
 
   useEffect(() => {
     setDeepVerificationInterested(false);
+    setPayerRole('');
+    setPaymentInterest('');
     if (!result || !deepVerification.eligible) return;
     void ensureSessionId().then(id => sendTelemetry({ event: 'deep_verification_eligible', sessionId: id, analysisType })).catch(() => {});
   }, [result, deepVerification.eligible]);
@@ -284,6 +288,11 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
     if (id) void sendTelemetry({ event: 'deep_verification_interest', sessionId: id, analysisType }).catch(() => {});
   }
 
+  async function recordRevenueEvidence(event: 'payer_role' | 'payment_interest', value: 'self' | 'family' | 'work' | 'yes' | 'maybe' | 'no') {
+    const id = await ensureSessionId().catch(() => '');
+    if (id) void sendTelemetry({ event, value, sessionId: id, analysisType }).catch(() => {});
+  }
+
   const ctaLabel = !canSubmit
     ? 'Mesaj, link veya ekran görüntüsü ekle'
     : isSharedPrefill
@@ -422,6 +431,23 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
             <Pressable onPress={markDeepVerificationInterest} disabled={deepVerificationInterested} style={[styles.protectionUseful, deepVerificationInterested && styles.protectionUsefulDone]}>
               <Text style={styles.protectionUsefulText}>{deepVerificationInterested ? 'İlgin kaydedildi' : 'Daha derin doğrulamayla ilgileniyorum'}</Text>
             </Pressable>
+            {deepVerificationInterested && (
+              <>
+                <Text style={styles.protectionFieldLabel}>Bu tür doğrulamayı en çok kimin için kullanırdın?</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  <Pressable disabled={Boolean(payerRole)} onPress={() => { setPayerRole('self'); void recordRevenueEvidence('payer_role', 'self'); }} style={[styles.protectionUseful, Boolean(payerRole) && styles.protectionUsefulDone]}><Text style={styles.protectionUsefulText}>Kendim</Text></Pressable>
+                  <Pressable disabled={Boolean(payerRole)} onPress={() => { setPayerRole('family'); void recordRevenueEvidence('payer_role', 'family'); }} style={[styles.protectionUseful, Boolean(payerRole) && styles.protectionUsefulDone]}><Text style={styles.protectionUsefulText}>Ailem</Text></Pressable>
+                  <Pressable disabled={Boolean(payerRole)} onPress={() => { setPayerRole('work'); void recordRevenueEvidence('payer_role', 'work'); }} style={[styles.protectionUseful, Boolean(payerRole) && styles.protectionUsefulDone]}><Text style={styles.protectionUsefulText}>İş için</Text></Pressable>
+                </View>
+                <Text style={styles.protectionFieldLabel}>Ek kanıt üreten ücretli bir seçenek olsa değerlendirir miydin?</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  <Pressable disabled={Boolean(paymentInterest)} onPress={() => { setPaymentInterest('yes'); void recordRevenueEvidence('payment_interest', 'yes'); }} style={[styles.protectionUseful, Boolean(paymentInterest) && styles.protectionUsefulDone]}><Text style={styles.protectionUsefulText}>Evet</Text></Pressable>
+                  <Pressable disabled={Boolean(paymentInterest)} onPress={() => { setPaymentInterest('maybe'); void recordRevenueEvidence('payment_interest', 'maybe'); }} style={[styles.protectionUseful, Boolean(paymentInterest) && styles.protectionUsefulDone]}><Text style={styles.protectionUsefulText}>Belki</Text></Pressable>
+                  <Pressable disabled={Boolean(paymentInterest)} onPress={() => { setPaymentInterest('no'); void recordRevenueEvidence('payment_interest', 'no'); }} style={[styles.protectionUseful, Boolean(paymentInterest) && styles.protectionUsefulDone]}><Text style={styles.protectionUsefulText}>Hayır</Text></Pressable>
+                </View>
+                {(payerRole || paymentInterest) && <Text style={styles.protectionText}>Bu yalnız ürün araştırmasıdır; ödeme veya sipariş başlatmaz.</Text>}
+              </>
+            )}
           </View>
         )}
 

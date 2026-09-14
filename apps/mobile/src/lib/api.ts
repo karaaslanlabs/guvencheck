@@ -68,7 +68,10 @@ export type TelemetryEvent =
   | 'repeat_protection'
   | 'deep_verification_eligible'
   | 'deep_verification_interest'
-  | 'trusted_helper_share';
+  | 'trusted_helper_share'
+  | 'core_decision_value'
+  | 'payer_role'
+  | 'payment_interest';
 
 export type TelemetryInput = {
   event: TelemetryEvent;
@@ -78,6 +81,7 @@ export type TelemetryInput = {
   level?: 'low' | 'medium' | 'high';
   route?: string;
   latencyMs?: number;
+  value?: 'self' | 'family' | 'work' | 'yes' | 'maybe' | 'no';
 };
 
 export async function sendTelemetry(input: TelemetryInput, signal?: AbortSignal) {
@@ -104,4 +108,3 @@ export async function sendTelemetry(input: TelemetryInput, signal?: AbortSignal)
 
   return data as { ok: true };
 }
-
