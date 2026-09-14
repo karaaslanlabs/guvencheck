@@ -26,6 +26,7 @@ export type AnalysisResult = {
   manipulationTactics?: string[];
   manipulationSummary?: string;
   protectionCandidate?: ProtectionCandidate;
+  officialSafePath?: { kind: string; title: string; action: string } | null;
   actions: string[];
   avoid: string[];
   confidence: 'low' | 'medium' | 'high';

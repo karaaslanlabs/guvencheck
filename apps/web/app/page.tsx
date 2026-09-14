@@ -18,6 +18,7 @@ type Analysis = {
   manipulationTactics?: ManipulationTactic[];
   manipulationSummary?: string;
   protectionCandidate?: ProtectionCandidate;
+  officialSafePath?: { kind: 'bank' | 'public' | 'delivery' | 'commitment' | 'commerce'; title: string; action: string } | null;
   actions: string[];
   avoid: string[];
   confidence: "low" | "medium" | "high";
@@ -593,6 +594,14 @@ export default function Home() {
               <p><strong>Belirsizlik: {uncertaintyText[analysis.decisionSupport.uncertainty]}</strong> — {analysis.decisionSupport.uncertaintySummary}</p>
               <p><strong>Karar etkisi:</strong> {analysis.decisionSupport.implication}</p>
               <p><strong>Güvenli sonraki adım:</strong> {analysis.decisionSupport.nextAction}</p>
+            </div>
+          )}
+
+          {analysis.officialSafePath && (
+            <div className="section decisionSupport">
+              <h3>ResmÃ® / gÃ¼venli yol</h3>
+              <p><strong>{analysis.officialSafePath.title}</strong></p>
+              <p>{analysis.officialSafePath.action}</p>
             </div>
           )}
 

@@ -308,6 +308,15 @@ export function ResultCard({
         </View>
       )}
 
+      {result.officialSafePath && (
+        <View style={styles.decisionSupport}>
+          <Text style={styles.decisionSupportTitle}>Güvenli kanal</Text>
+          <Text style={styles.decisionSupportText}>
+            <Text style={styles.decisionSupportStrong}>{result.officialSafePath.title}</Text>
+            {' — '}{result.officialSafePath.action}
+          </Text>
+        </View>
+      )}
       {result.manipulationTactics && result.manipulationTactics.length > 0 && (
         <View style={styles.decisionSupport}>
           <Text style={styles.decisionSupportTitle}>Nasıl yönlendirilmeye çalışılıyor?</Text>

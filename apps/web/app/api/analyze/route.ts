@@ -5,6 +5,7 @@ import { withDecisionSupport } from "../../../lib/decision-support";
 import { MANIPULATION_TACTICS, sanitizeManipulationTactics } from "../../../lib/manipulation-lens";
 import { sanitizeProtectionCandidate } from "../../../lib/commitment-protection";
 import { linkEscalationReasons } from "../../../lib/link-routing";
+import { deriveOfficialSafePath } from "../../../lib/official-safe-path";
 
 export const runtime = "nodejs";
 
@@ -558,10 +559,16 @@ export async function POST(req: NextRequest) {
 
     const apiKey = process.env.OPENAI_API_KEY;
     const shadowInput = { type: body.type, content: text, imageData: body.imageData };
-    const productResponse = async (result: any) => jsonNoStore(
-      await preserveProductResultWithShadow(withDecisionSupport(result), shadowInput, requestId),
-      { headers: rateHeaders },
-    );
+    const productResponse = async (result: any) => {
+      const enriched = {
+        ...result,
+        officialSafePath: deriveOfficialSafePath({ type: body.type, text, analysis: result }),
+      };
+      return jsonNoStore(
+        await preserveProductResultWithShadow(withDecisionSupport(enriched), shadowInput, requestId),
+        { headers: rateHeaders },
+      );
+    };
     if (!apiKey) return productResponse(demoAnalyze(text || "ekran görüntüsü"));
 
     const economicGate = await checkEconomicGate();
