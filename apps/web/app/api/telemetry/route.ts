@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { analyticsConfigured, insertBetaEvent } from "../../../lib/supabase-rest";
 import { sanitizeAnalysisRequestId, sanitizeRevenueEvidence } from "../../../lib/revenue-evidence";
+import { isTelemetryEvent } from "../../../lib/telemetry-events";
 
 export const runtime = "nodejs";
-
-const allowedEvents = new Set(["page_view","analysis_started","analysis_completed","analysis_error","share_clicked","privacy_view","protection_save_intent","protection_saved","protection_removed","protection_status_view","protection_event_useful","repeat_protection","deep_verification_eligible","deep_verification_interest","trusted_helper_share","core_decision_value","payer_role","payment_interest"]);
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    if (!allowedEvents.has(body?.event)) return NextResponse.json({ error: "Geçersiz olay." }, { status: 400, headers: { "Cache-Control": "no-store" } });
+    if (!isTelemetryEvent(body?.event)) return NextResponse.json({ error: "Geçersiz olay." }, { status: 400, headers: { "Cache-Control": "no-store" } });
     const eventValue = sanitizeRevenueEvidence(body.event, body.value);
     if (eventValue === null) return NextResponse.json({ error: "Geçersiz kanıt değeri." }, { status: 400, headers: { "Cache-Control": "no-store" } });
     const event = {

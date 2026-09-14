@@ -374,6 +374,12 @@ export default function Home() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ event: "analysis_completed", sessionId, analysisType, score: data.score, level: data.level, route: data.meta?.route, latencyMs: data.meta?.latencyMs })
       }).catch(() => undefined);
+      if (data.protectionCandidate?.eligible === true) {
+        void fetch("/api/telemetry", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ event: "protection_candidate_eligible", sessionId, analysisType, requestId: data.requestId })
+        }).catch(() => undefined);
+      }
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Beklenmeyen hata oluştu.";
