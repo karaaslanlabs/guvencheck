@@ -5,6 +5,7 @@ import { sendFeedback, sendTelemetry } from '../lib/api';
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import { Shield } from './Shield';
+import { getProtectionBooster } from '../lib/protection-booster';
 
 const labels = {
   high: 'Yüksek risk',
@@ -87,6 +88,7 @@ export function ResultCard({
 
   const extraActions = (result.actions || []).slice(1);
   const extraSignals = (result.signals || []).slice(3);
+  const protectionBooster = getProtectionBooster(result.manipulationTactics);
 
   async function submitFeedback(helpful: boolean, reason?: NegativeFeedbackReason) {
     if (feedbackSending || feedback) return;
@@ -111,6 +113,7 @@ export function ResultCard({
       });
       setFeedback(helpful ? 'yes' : 'no');
       setShowNegativeReasons(false);
+      if (helpful) void sendTelemetry({ event: 'core_decision_value', sessionId, analysisType, requestId: result.requestId }).catch(() => {});
     } catch (error) {
       setFeedbackError(
         error instanceof Error
@@ -139,6 +142,8 @@ export function ResultCard({
       level: result.level,
       route: typeof meta?.route === 'string' ? meta.route : undefined,
     }).catch(() => {});
+
+    void sendTelemetry({ event: 'trusted_helper_share', sessionId, analysisType, requestId: result.requestId }).catch(() => {});
 
     try {
       const available = await Sharing.isAvailableAsync();
@@ -303,6 +308,34 @@ export function ResultCard({
         </View>
       )}
 
+      {result.officialSafePath && (
+        <View style={styles.decisionSupport}>
+          <Text style={styles.decisionSupportTitle}>Güvenli kanal</Text>
+          <Text style={styles.decisionSupportText}>
+            <Text style={styles.decisionSupportStrong}>{result.officialSafePath.title}</Text>
+            {' — '}{result.officialSafePath.action}
+          </Text>
+        </View>
+      )}
+      {result.manipulationTactics && result.manipulationTactics.length > 0 && (
+        <View style={styles.decisionSupport}>
+          <Text style={styles.decisionSupportTitle}>Nasıl yönlendirilmeye çalışılıyor?</Text>
+          <Text style={styles.decisionSupportText}>
+            {result.manipulationSummary || 'İçerikte kararını etkilemeye çalışan davranışsal yönlendirme sinyalleri var.'}
+          </Text>
+        </View>
+      )}
+
+      {protectionBooster && (
+        <View style={styles.decisionSupport}>
+          <Text style={styles.decisionSupportTitle}>Bir dahaki sefere daha erken fark et</Text>
+          <Text style={styles.decisionSupportText}>
+            <Text style={styles.decisionSupportStrong}>{protectionBooster.title}</Text>
+            {' — '}{protectionBooster.action}
+          </Text>
+        </View>
+      )}
+
       <Text style={styles.section}>Neden böyle düşünüyoruz?</Text>
       {(result.signals || []).slice(0, 3).map((s, i) => (
         <Text key={i} style={styles.bullet}>
@@ -435,7 +468,7 @@ export function ResultCard({
           disabled={shareSending}
         >
           <Text style={styles.shareButtonText}>
-            {shareSending ? 'Paylaşım açılıyor…' : 'Aileme gönder'}
+            {shareSending ? 'Paylaşım açılıyor…' : 'Güvendiğim birine gönder'}
           </Text>
         </Pressable>
       </View>

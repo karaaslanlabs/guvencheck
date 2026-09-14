@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { aiAnalysisEnabled, checkEconomicGate, persistEconomicEvent } from "../../../lib/economic-readiness";
 import { preserveProductResultWithShadow } from "../../../lib/agent-platform-shadow";
 import { withDecisionSupport } from "../../../lib/decision-support";
+import { MANIPULATION_TACTICS, sanitizeManipulationTactics } from "../../../lib/manipulation-lens";
+import { sanitizeProtectionCandidate } from "../../../lib/commitment-protection";
+import { linkEscalationReasons } from "../../../lib/link-routing";
+import { deriveOfficialSafePath } from "../../../lib/official-safe-path";
+import { lookupCuratedIntelligence } from "../../../lib/verified-intelligence";
+import { lookupReusableLink, recordCuratedHit, recordReuseHit, recordReuseMiss, reuseConfigured, storeReusableLink } from "../../../lib/analysis-reuse-store";
 
 export const runtime = "nodejs";
 
@@ -55,6 +61,22 @@ const schema = {
     title: { type: "string" },
     summary: { type: "string" },
     signals: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 6 },
+    manipulationTactics: { type: "array", items: { type: "string", enum: [...MANIPULATION_TACTICS] }, maxItems: 4 },
+    manipulationSummary: { type: "string" },
+    protectionCandidate: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        eligible: { type: "boolean" },
+        kind: { type: "string", enum: ["none", "trial", "subscription", "commitment", "purchase", "deadline"] },
+        title: { type: "string" },
+        provider: { type: "string" },
+        deadline: { type: "string" },
+        nextAction: { type: "string" },
+        summary: { type: "string" }
+      },
+      required: ["eligible", "kind", "title", "provider", "deadline", "nextAction", "summary"]
+    },
     actions: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 5 },
     avoid: { type: "array", items: { type: "string" }, maxItems: 5 },
     confidence: { type: "string", enum: ["low", "medium", "high"] },
@@ -63,7 +85,7 @@ const schema = {
     verifiedFindings: { type: "array", items: { type: "string" }, maxItems: 5 },
     extractedUrls: { type: "array", items: { type: "string" }, maxItems: 3 }
   },
-  required: ["score", "level", "title", "summary", "signals", "actions", "avoid", "confidence", "verificationStatus", "verificationSummary", "verifiedFindings", "extractedUrls"]
+  required: ["score", "level", "title", "summary", "signals", "manipulationTactics", "manipulationSummary", "protectionCandidate", "actions", "avoid", "confidence", "verificationStatus", "verificationSummary", "verifiedFindings", "extractedUrls"]
 };
 
 const SYSTEM_PROMPT = `Sen GüvenCheck adlı Türkiye odaklı dijital güven asistanının risk analiz motorusun.
@@ -87,6 +109,14 @@ Kurallar:
 - Görsel veya metin içinde açıkça görülen http/https bağlantılarını extractedUrls alanına aynen çıkar. Bağlantı yoksa boş dizi döndür. URL uydurma.
 - Yüksek riskte para göndermeme, linke tıklamama, OTP/şifre paylaşmama ve kurumu mesajdaki kanal yerine kendi resmî sitesi/uygulaması/numarasından doğrulama tavsiyesi ver.
 - Düşük risk sonucu bile içeriğin kesin güvenli olduğu anlamına gelmez.
+- Manipulation Lens için yalnız içerikte açıkça görülen davranışsal taktikleri işaretle; scam kararı yerine yönlendirme tekniğini açıkla.
+- manipulationTactics yalnız şu kimliklerden oluşabilir: urgency_time_pressure, authority_impersonation, scarcity_too_good_to_be_true, secrecy_isolation, emotional_leverage, trust_building_social_engineering, payment_channel_redirection.
+- Bir taktik için yeterli kanıt yoksa ekleme. Hiç taktik yoksa manipulationTactics=[] ve manipulationSummary="" döndür.
+- manipulationSummary en fazla 2 kısa cümle olsun; kullanıcıya nasıl baskı/yönlendirme uygulandığını sade Türkçeyle açıkla, niyet uydurma.
+- Commitment Protection için yalnız açıkça görülen trial, subscription, commitment, purchase veya deadline bağlamını protectionCandidate alanına çıkar.
+- Önemli tarih açıkça görünmüyorsa deadline="" döndür; tarih uydurma. Tarih varsa YYYY-MM-DD kullan.
+- protectionCandidate yalnız kullanıcı daha sonra hatırlamak/korumak isteyebilecek somut bir ekonomik taahhüt veya kritik tarih varsa eligible=true olsun.
+- Ham mesajı, URL'yi veya kişisel veriyi protectionCandidate alanına kopyalama. Kısa başlık, sağlayıcı adı, kritik aksiyon ve özet yeterlidir.
 - Kullanıcı için en kritik 3-5 sinyali öne çıkar; aynı şeyi farklı cümlelerle tekrarlama.`;
 
 function normalizeHttpUrl(value: string) {
@@ -179,6 +209,9 @@ function sanitizeAnalysis(parsed: any) {
     title: cleanModelText(parsed?.title).slice(0, 180),
     summary: cleanModelText(parsed?.summary).slice(0, 700),
     signals: Array.isArray(parsed?.signals) ? parsed.signals.map(cleanModelText).filter(Boolean).slice(0, 5) : [],
+    manipulationTactics: sanitizeManipulationTactics(parsed?.manipulationTactics),
+    manipulationSummary: cleanModelText(parsed?.manipulationSummary).slice(0, 420),
+    protectionCandidate: sanitizeProtectionCandidate(parsed?.protectionCandidate),
     actions: Array.isArray(parsed?.actions) ? parsed.actions.map(cleanModelText).filter(Boolean).slice(0, 5) : [],
     avoid: Array.isArray(parsed?.avoid) ? parsed.avoid.map(cleanModelText).filter(Boolean).slice(0, 4) : [],
     verificationSummary: cleanModelText(parsed?.verificationSummary).slice(0, 600),
@@ -202,6 +235,19 @@ function demoAnalyze(input: string) {
   const signals: string[] = patterns.filter(([regex]) => regex.test(text)).map(([, label]) => label);
   if (/https?:\/\//i.test(text)) signals.push("İçerik bir bağlantıya yönlendiriyor; alan adını bağımsız doğrulamak gerekir.");
 
+  const manipulationTactics = sanitizeManipulationTactics([
+    /(acil|hemen|son uyarı|son gün|askıya|kapatılacak|yasal işlem|haciz|ceza)/i.test(text) ? "urgency_time_pressure" : null,
+    /(polis|savcı|jandarma|banka|e-devlet|hgs|vergi|icra|ptt|kargo)/i.test(text) && /(acil|hemen|askıya|kapatılacak|otp|şifre|iban|havale|eft|kripto|ödeme|para gönder|https?:\/\/)/i.test(text) ? "authority_impersonation" : null,
+    /(hediye|kazandınız|çekiliş|bedava|garanti kazanç|yüksek getiri|risksiz kazanç|son stok|sadece bugün)/i.test(text) ? "scarcity_too_good_to_be_true" : null,
+    /(kimseye söyleme|gizli tut|aramayı kapatma|yalnız konuş|başkasına danışma)/i.test(text) ? "secrecy_isolation" : null,
+    /(korkut|tehdit|panik|ailen|çocuğun|yakının|yardım et|mağdur)/i.test(text) ? "emotional_leverage" : null,
+    /(güven bana|resmî temsilci|müşteri hizmetleri|uzmanım|sizin için|özel müşteri)/i.test(text) ? "trust_building_social_engineering" : null,
+    /(iban|havale|eft|kripto|usdt|btc|whatsapp|telegram|başka hesaba|farklı hesaba)/i.test(text) ? "payment_channel_redirection" : null,
+  ]);
+  const manipulationSummary = manipulationTactics.length
+    ? "İçerik, kararını hızlandırmak veya belirli bir kişi, kurum ya da ödeme kanalına yönlendirmek için davranışsal baskı sinyalleri taşıyor."
+    : "";
+
   let score = Math.min(96, 14 + signals.length * 14);
   if (signals.length === 0) score = 22;
   if (/(otp|doğrulama kodu|şifre|anydesk|teamviewer)/i.test(text) && /(para|ödeme|iban|banka)/i.test(text)) score = Math.max(score, 88);
@@ -213,6 +259,8 @@ function demoAnalyze(input: string) {
     title: level === "high" ? "Bu içerik güçlü risk sinyalleri taşıyor" : level === "medium" ? "Doğrulamadan işlem yapma" : "Belirgin risk sinyali az",
     summary: level === "high" ? "İçerikte sosyal mühendislik veya dolandırıcılıkla uyumlu birden fazla işaret bulundu." : level === "medium" ? "Kesin bir sonuca varmak için bağımsız doğrulama gerekiyor." : "Metinde belirgin bir dolandırıcılık kalıbı az görünüyor; bu sonuç içeriğin kesin güvenli olduğu anlamına gelmez.",
     signals: signals.length ? signals.slice(0, 6) : ["Demo taramasında belirgin aciliyet, para transferi veya şifre talebi kalıbı bulunmadı."],
+    manipulationTactics,
+    manipulationSummary,
     actions: ["Göndereni mesajdaki link veya numaradan değil, kurumun kendi resmî kanalından doğrula.", "Para veya hassas bilgi isteniyorsa işlem yapmadan önce ikinci bir doğrulama yap."],
     avoid: level === "high" ? ["Linke tıklama.", "Para gönderme.", "Şifre veya SMS doğrulama kodu paylaşma."] : ["Yalnızca bu skora bakarak güvenli kabul etme."],
     confidence: signals.length >= 3 ? "medium" : "low",
@@ -376,7 +424,9 @@ async function runOpenAI(args: {
 
   let prompt: string;
   if (args.type === "link") {
-    prompt = `Bu URL için URL yapısını ve güncel harici risk sinyallerini birlikte değerlendir. Web aramasını mutlaka kullan. Exact domaini; domain + dolandırıcılık, scam, phishing ve şikayet sorgularını araştır. Marka çağrışımı varsa gerçek resmî alan adıyla karşılaştır. Hedef sitenin kendi içeriğini bağımsız güven kanıtı sayma; şikâyet platformlarını da kullanıcı bildirimi olarak etiketle. Kanıt yetersizse açıkça söyle ve güvenli olduğu sonucuna atlama. URL: ${args.text}\nDeterministik URL özellikleri: ${JSON.stringify(getUrlFacts(args.text))}\nAlan adı güven gerçekleri: ${JSON.stringify(getDomainTrustFacts(args.text))}. Web aramasında özellikle rootDomain için resmî kurum/marka eşleşmesini doğrula.`;
+    prompt = args.useWeb
+      ? `Bu URL için URL yapısını ve güncel harici risk sinyallerini birlikte değerlendir. Web aramasını mutlaka kullan. Exact domaini; domain + dolandırıcılık, scam, phishing ve şikayet sorgularını araştır. Marka çağrışımı varsa gerçek resmî alan adıyla karşılaştır. Hedef sitenin kendi içeriğini bağımsız güven kanıtı sayma; şikâyet platformlarını da kullanıcı bildirimi olarak etiketle. Kanıt yetersizse açıkça söyle ve güvenli olduğu sonucuna atlama. URL: ${args.text}\nDeterministik URL özellikleri: ${JSON.stringify(getUrlFacts(args.text))}\nAlan adı güven gerçekleri: ${JSON.stringify(getDomainTrustFacts(args.text))}. Web aramasında özellikle rootDomain için resmî kurum/marka eşleşmesini doğrula.`
+      : `Bu URL'yi yalnız URL yapısı ve içerikte görünen sinyaller üzerinden hızlı ön değerlendirmeden geçir. Harici web doğrulaması yapmadığını açıkça belirt; güncel itibar veya resmî alan adı eşleşmesi uydurma. URL: ${args.text}\nDeterministik URL özellikleri: ${JSON.stringify(getUrlFacts(args.text))}\nAlan adı güven gerçekleri: ${JSON.stringify(getDomainTrustFacts(args.text))}.`;
   } else if (args.type === "text") {
     prompt = `Bu mesajı dijital dolandırıcılık ve sosyal mühendislik risk sinyalleri açısından değerlendir:\n\n${args.text}`;
   } else {
@@ -505,16 +555,51 @@ export async function POST(req: NextRequest) {
     if (hasImage && body.imageData!.length > MAX_IMAGE_DATA_LENGTH) return jsonNoStore({ error: "Ekran görüntüsü işlendikten sonra hâlâ çok büyük." }, { status: 413, headers: rateHeaders });
     if (!hasImage && text.length < 3) return jsonNoStore({ error: "Analiz edilecek içerik bulunamadı." }, { status: 400, headers: rateHeaders });
 
+    const apiKey = process.env.OPENAI_API_KEY;
+    const shadowInput = { type: body.type, content: text, imageData: body.imageData };
+    const productResponse = async (result: any) => {
+      const enriched = {
+        ...result,
+        officialSafePath: deriveOfficialSafePath({ type: body.type, text, analysis: result }),
+      };
+      return jsonNoStore(
+        await preserveProductResultWithShadow(withDecisionSupport(enriched), shadowInput, requestId),
+        { headers: rateHeaders },
+      );
+    };
+
+    if (!body.benchmarkModel && body.type === "link") {
+      const curated = lookupCuratedIntelligence(text);
+      if (curated) {
+        await recordCuratedHit(requestId, curated.id, curated.verifiedAt);
+        await persistEconomicEvent({
+          analysis_request_id: requestId, analysis_type: "link", provider: "internal",
+          model: null, model_route: "curated-intelligence", input_tokens: 0, cached_input_tokens: 0,
+          output_tokens: 0, total_tokens: 0, web_search_calls: 0, estimated_cost_usd: 0,
+          latency_ms: Date.now() - startedAt, success: true, error_class: null
+        });
+        return productResponse({ ...curated.result, mode: "curated", requestId, meta: { route: "curated-intelligence", estimatedCostUsd: 0, intelligenceId: curated.id } });
+      }
+
+      const reuseEnabled = reuseConfigured();
+      const reused = reuseEnabled ? await lookupReusableLink(text) : null;
+      if (reused) {
+        await recordReuseHit(requestId, reused);
+        await persistEconomicEvent({
+          analysis_request_id: requestId, analysis_type: "link", provider: "internal",
+          model: null, model_route: "link-reuse", input_tokens: 0, cached_input_tokens: 0,
+          output_tokens: 0, total_tokens: 0, web_search_calls: 0, estimated_cost_usd: 0,
+          latency_ms: Date.now() - startedAt, success: true, error_class: null
+        });
+        return productResponse({ ...reused.result_json, mode: "reuse", requestId, meta: { route: "link-reuse", estimatedCostUsd: 0, sourceRequestId: reused.source_request_id } });
+      }
+      if (reuseEnabled) await recordReuseMiss(requestId);
+    }
+
     if (!aiAnalysisEnabled()) {
       return jsonNoStore({ error: "Analiz hizmeti şu anda geçici olarak kullanılamıyor. Lütfen daha sonra yeniden dene.", requestId }, { status: 503, headers: rateHeaders });
     }
 
-    const apiKey = process.env.OPENAI_API_KEY;
-    const shadowInput = { type: body.type, content: text, imageData: body.imageData };
-    const productResponse = async (result: any) => jsonNoStore(
-      await preserveProductResultWithShadow(withDecisionSupport(result), shadowInput, requestId),
-      { headers: rateHeaders },
-    );
     if (!apiKey) return productResponse(demoAnalyze(text || "ekran görüntüsü"));
 
     const economicGate = await checkEconomicGate();
@@ -544,36 +629,23 @@ export async function POST(req: NextRequest) {
       return productResponse({ ...run.analysis, sources: run.sources, mode: "ai", webVerified: body.type === "link" && run.webSearchCalls > 0, meta, requestId });
     }
 
-    if (body.type === "link") {
-      const run = await runOpenAI({ apiKey, model: deepModel, type: "link", text, useWeb: true });
-      const meta = {
-        version: "0.6.1", model: run.model, route: "terra-web", escalated: true, escalationReasons: ["link_web_verification"],
-        inputTokens: run.usage?.input_tokens ?? null, cachedInputTokens: run.usage?.input_tokens_details?.cached_tokens ?? 0,
-        outputTokens: run.usage?.output_tokens ?? null, totalTokens: run.usage?.total_tokens ?? null,
-        webSearchCalls: run.webSearchCalls, latencyMs: Date.now() - startedAt, estimatedCostUsd: run.estimatedCostUsd,
-        calls: [{ model: run.model, costUsd: run.estimatedCostUsd, latencyMs: run.latencyMs, webSearchCalls: run.webSearchCalls }]
-      };
-      console.info("GUVENCHECK_USAGE", JSON.stringify({ requestId, type: body.type, ...meta }));
-      await persistSuccessfulEconomicUsage(requestId, body.type, meta);
-      return productResponse({ ...run.analysis, sources: run.sources, mode: "ai", webVerified: run.webSearchCalls > 0, meta, requestId });
-    }
-
     const first = await runOpenAI({ apiKey, model: fastModel, type: body.type, text, imageData: body.imageData, useWeb: false });
     const firstAnalysis = first.analysis;
-    const foundUrls = uniqueUrls(firstAnalysis.extractedUrls || []);
+    const foundUrls = uniqueUrls(body.type === "link" ? [text, ...(firstAnalysis.extractedUrls || [])] : (firstAnalysis.extractedUrls || []));
     const escalationReasons: string[] = [];
-    if (firstAnalysis.score >= 25 && firstAnalysis.score <= 75) escalationReasons.push("gray_zone_score");
-    if (firstAnalysis.confidence === "low") escalationReasons.push("low_confidence");
+    if (body.type !== "link" && firstAnalysis.score >= 25 && firstAnalysis.score <= 75) escalationReasons.push("gray_zone_score");
+    if (body.type !== "link" && firstAnalysis.confidence === "low") escalationReasons.push("low_confidence");
     if (body.type === "image" && foundUrls.length > 0) escalationReasons.push("image_contains_url");
     if (body.type === "text" && foundUrls.length > 0 && firstAnalysis.score < 85) escalationReasons.push("text_contains_url");
     if (body.type === "text" && criticalTextSignal(text) && firstAnalysis.score < 76) escalationReasons.push("critical_terms_need_review");
+    if (body.type === "link") escalationReasons.push(...linkEscalationReasons(firstAnalysis, getUrlFacts(text)));
 
     const shouldEscalate = escalationReasons.length > 0;
     let finalRun = first;
     let second: ModelRun | null = null;
     let escalationFailure: string | null = null;
     if (shouldEscalate) {
-      const useWeb = foundUrls.length > 0;
+      const useWeb = body.type === "link" || foundUrls.length > 0;
       try {
         second = await runOpenAI({ apiKey, model: deepModel, type: body.type, text, imageData: body.imageData, useWeb, prior: firstAnalysis });
         finalRun = second;
@@ -585,7 +657,7 @@ export async function POST(req: NextRequest) {
           analysis: {
             ...first.analysis,
             verificationStatus: "not_checked",
-            verificationSummary: "İkinci aşama harici doğrulama tamamlanamadı. İlk görsel/metin analizi gösteriliyor; hassas işlem öncesinde kurumu kendi resmî kanalından bağımsız doğrula.",
+            verificationSummary: "İkinci aşama harici doğrulama tamamlanamadı. İlk hızlı analiz gösteriliyor; hassas işlem öncesinde kurumu kendi resmî kanalından bağımsız doğrula.",
             verifiedFindings: []
           },
           sources: [],
@@ -604,7 +676,9 @@ export async function POST(req: NextRequest) {
     const meta = {
       version: "0.6.1",
       model: shouldEscalate ? `${fastModel} → ${deepModel}` : fastModel,
-      route: escalationFailure ? "hybrid-fallback-fast" : (shouldEscalate ? "hybrid-escalated" : "luna-fast-path"),
+      route: body.type === "link"
+        ? (escalationFailure ? "link-hybrid-fallback-fast" : (shouldEscalate ? "link-hybrid-escalated" : "link-luna-fast-path"))
+        : (escalationFailure ? "hybrid-fallback-fast" : (shouldEscalate ? "hybrid-escalated" : "luna-fast-path")),
       escalated: shouldEscalate,
       escalationReasons,
       escalationFailure,
@@ -615,14 +689,18 @@ export async function POST(req: NextRequest) {
     };
     console.info("GUVENCHECK_USAGE", JSON.stringify({ requestId, type: body.type, ...meta }));
     await persistSuccessfulEconomicUsage(requestId, body.type, meta);
-    return productResponse({
+    const productResult = {
       ...finalRun.analysis,
       sources: finalRun.sources,
       mode: "ai",
       webVerified: finalRun.webSearchCalls > 0,
       meta,
       requestId
-    });
+    };
+    if (body.type === "link" && !body.benchmarkModel) {
+      await storeReusableLink(text, productResult, requestId);
+    }
+    return productResponse(productResult);
   } catch (error) {
     const errorClass = error instanceof Error ? error.message : "UNKNOWN_ERROR";
     if (paidAiStarted && analysisType) {

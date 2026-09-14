@@ -2,6 +2,7 @@ export type BetaEventRow = {
   id?: number;
   created_at?: string;
   event_type: string;
+  event_value?: string | null;
   session_id?: string | null;
   analysis_type?: "text" | "link" | "image" | null;
   score?: number | null;
@@ -11,6 +12,17 @@ export type BetaEventRow = {
   helpful?: boolean | null;
   feedback_reason?: string | null;
   analysis_request_id?: string | null;
+};
+
+export type AnalysisReuseRow = {
+  fingerprint: string;
+  contract_version: string;
+  source_request_id: string;
+  created_at?: string;
+  expires_at: string;
+  risk_level: "low" | "medium" | "high";
+  source_estimated_cost_usd?: number | null;
+  result_json: Record<string, unknown>;
 };
 
 export type EconomicEventRow = {
@@ -69,13 +81,36 @@ export async function insertBetaEvent(row: BetaEventRow) {
 
 export async function readBetaEvents(limit = 5000): Promise<BetaEventRow[]> {
   const safeLimit = Math.max(1, Math.min(10000, Math.round(limit)));
-  const fields = "id,created_at,event_type,session_id,analysis_type,score,risk_level,model_route,latency_ms,helpful,feedback_reason,analysis_request_id";
+  const fields = "id,created_at,event_type,event_value,session_id,analysis_type,score,risk_level,model_route,latency_ms,helpful,feedback_reason,analysis_request_id";
   const res = await supabaseFetch(`beta_events?select=${fields}&order=created_at.desc&limit=${safeLimit}`);
   if (!res.ok) {
     const detail = (await res.text()).slice(0, 400);
     throw new Error(`Supabase select failed (${res.status}): ${detail}`);
   }
   return (await res.json()) as BetaEventRow[];
+}
+
+export async function readAnalysisReuse(fingerprint: string, contractVersion: string): Promise<AnalysisReuseRow | null> {
+  const fp = encodeURIComponent(fingerprint);
+  const cv = encodeURIComponent(contractVersion);
+  const now = encodeURIComponent(new Date().toISOString());
+  const fields = "fingerprint,contract_version,source_request_id,created_at,expires_at,risk_level,source_estimated_cost_usd,result_json";
+  const res = await supabaseFetch(`analysis_reuse?select=${fields}&fingerprint=eq.${fp}&contract_version=eq.${cv}&expires_at=gt.${now}&limit=1`);
+  if (!res.ok) throw new Error(`Analysis reuse select failed (${res.status})`);
+  const rows = (await res.json()) as AnalysisReuseRow[];
+  return rows[0] || null;
+}
+
+export async function upsertAnalysisReuse(row: AnalysisReuseRow) {
+  const res = await supabaseFetch("analysis_reuse?on_conflict=fingerprint,contract_version", {
+    method: "POST",
+    headers: { Prefer: "return=minimal,resolution=merge-duplicates" },
+    body: JSON.stringify(row)
+  });
+  if (!res.ok) {
+    const detail = (await res.text()).slice(0, 300);
+    throw new Error(`Analysis reuse upsert failed (${res.status}): ${detail}`);
+  }
 }
 
 export async function insertEconomicEvent(row: EconomicEventRow) {

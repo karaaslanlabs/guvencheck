@@ -1,11 +1,32 @@
 export type AnalysisType = 'text' | 'link' | 'image';
 export type RiskLevel = 'low' | 'medium' | 'high';
+export type ProtectionKind = 'none' | 'trial' | 'subscription' | 'commitment' | 'purchase' | 'deadline';
+
+export type ProtectionCandidate = {
+  eligible: boolean;
+  kind: ProtectionKind;
+  title: string;
+  provider: string;
+  deadline: string;
+  nextAction: string;
+  summary: string;
+};
+
+export type ProtectionObject = ProtectionCandidate & {
+  id: string;
+  savedAt: string;
+};
 
 export type AnalysisResult = {
+  requestId?: string;
   score: number;
   level: RiskLevel;
   summary: string;
   signals: string[];
+  manipulationTactics?: string[];
+  manipulationSummary?: string;
+  protectionCandidate?: ProtectionCandidate;
+  officialSafePath?: { kind: string; title: string; action: string } | null;
   actions: string[];
   avoid: string[];
   confidence: 'low' | 'medium' | 'high';

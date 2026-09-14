@@ -1,6 +1,11 @@
 "use client";
 
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import { MANIPULATION_LABELS, type ManipulationTactic } from "../lib/manipulation-lens";
+import { sanitizeProtectionCandidate, type ProtectionCandidate, type ProtectionObject } from "../lib/commitment-protection";
+import { getProtectionTiming, isProtectionActionDue } from "../lib/protection-status";
+import { deriveDeepVerification } from "../lib/deep-verification";
+import { getProtectionBooster } from "../lib/protection-booster";
 
 type RiskLevel = "low" | "medium" | "high";
 type Analysis = {
@@ -10,6 +15,10 @@ type Analysis = {
   title: string;
   summary: string;
   signals: string[];
+  manipulationTactics?: ManipulationTactic[];
+  manipulationSummary?: string;
+  protectionCandidate?: ProtectionCandidate;
+  officialSafePath?: { kind: 'bank' | 'public' | 'delivery' | 'commitment' | 'commerce'; title: string; action: string } | null;
   actions: string[];
   avoid: string[];
   confidence: "low" | "medium" | "high";
@@ -56,6 +65,13 @@ const shortLevelText: Record<RiskLevel, string> = {
 };
 
 const uncertaintyText = { low: "Düşük", medium: "Orta", high: "Yüksek" } as const;
+
+function validDraftDate(value: string) {
+  if (!value) return true;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
 
 function normalizeUrl(value: string) {
   const trimmed = value.trim();
@@ -225,7 +241,6 @@ async function createShareCard(analysis: Analysis, appUrl?: string): Promise<Fil
 }
 
 export default function Home() {
-  const [tab, setTab] = useState<"text" | "link" | "image">("image");
   const [value, setValue] = useState("");
   const [imageData, setImageData] = useState<string | null>(null);
   const [imageName, setImageName] = useState("");
@@ -237,6 +252,13 @@ export default function Home() {
   const [feedbackState, setFeedbackState] = useState<"idle" | "choose" | "sending" | "sent">("idle");
   const [sessionId, setSessionId] = useState("");
   const [showSplash, setShowSplash] = useState(false);
+  const [activeProtection, setActiveProtection] = useState<ProtectionObject | null>(null);
+  const [protectionMessage, setProtectionMessage] = useState("");
+  const [protectionDraft, setProtectionDraft] = useState<ProtectionCandidate | null>(null);
+  const [protectionUsefulSent, setProtectionUsefulSent] = useState(false);
+  const [deepVerificationInterested, setDeepVerificationInterested] = useState(false);
+  const [payerRole, setPayerRole] = useState<"self" | "family" | "work" | "">("");
+  const [paymentInterest, setPaymentInterest] = useState<"yes" | "maybe" | "no" | "">("");
 
   useEffect(() => {
     const standalone = window.matchMedia?.("(display-mode: standalone)").matches || Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
@@ -260,22 +282,52 @@ export default function Home() {
     }).catch(() => undefined);
   }, []);
 
-  const normalizedLink = tab === "link" ? normalizeUrl(value) : null;
-  const linkIsValid = tab !== "link" || value.trim().length === 0 || Boolean(normalizedLink);
+  useEffect(() => {
+    const raw = window.localStorage.getItem("guvencheck_active_protection");
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as Partial<ProtectionObject>;
+      const candidate = sanitizeProtectionCandidate(parsed);
+      if (!candidate.eligible || !parsed.id || !parsed.savedAt) throw new Error("invalid protection");
+      setActiveProtection({ ...candidate, id: String(parsed.id), savedAt: String(parsed.savedAt), sourceRequestId: typeof parsed.sourceRequestId === "string" ? parsed.sourceRequestId : undefined });
+    } catch {
+      window.localStorage.removeItem("guvencheck_active_protection");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!sessionId || !activeProtection || analysis) return;
+    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "protection_status_view", sessionId, requestId: activeProtection.sourceRequestId }) }).catch(() => undefined);
+  }, [sessionId, activeProtection?.id, analysis?.requestId]);
+
+  useEffect(() => {
+    const candidate = analysis?.protectionCandidate;
+    setProtectionDraft(candidate?.eligible ? { ...candidate } : null);
+    setProtectionMessage("");
+  }, [analysis]);
+
+  const deepVerification = useMemo(
+    () => analysis ? deriveDeepVerification(analysis) : { eligible: false, reason: "" },
+    [analysis],
+  );
+  const protectionBooster = useMemo(
+    () => getProtectionBooster(analysis?.manipulationTactics),
+    [analysis?.manipulationTactics],
+  );
+
+  useEffect(() => {
+    setDeepVerificationInterested(false);
+    if (!analysis || !deepVerification.eligible || !sessionId) return;
+    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "deep_verification_eligible", sessionId, analysisType: imageData ? "image" : normalizeUrl(value) ? "link" : "text", requestId: analysis.requestId }) }).catch(() => undefined);
+  }, [analysis?.requestId, analysis?.score, deepVerification.eligible, sessionId]);
+
+  const normalizedLink = normalizeUrl(value);
+  const analysisType: "text" | "link" | "image" = imageData ? "image" : normalizedLink ? "link" : "text";
   const canSubmit = useMemo(() => {
     if (processingImage) return false;
-    if (tab === "image") return Boolean(imageData);
-    if (tab === "link") return value.trim().length >= 4 && Boolean(normalizeUrl(value));
+    if (imageData) return true;
     return value.trim().length >= 3;
-  }, [tab, imageData, processingImage, value]);
-
-  function switchTab(next: "text" | "link" | "image") {
-    setTab(next);
-    setAnalysis(null);
-    setError("");
-    setCopied(false);
-    setFeedbackState("idle");
-  }
+  }, [imageData, processingImage, value]);
 
   async function handleImage(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -284,6 +336,7 @@ export default function Home() {
     setError("");
     try {
       const compressed = await compressImage(file);
+      setValue("");
       setImageData(compressed);
       setImageName(file.name);
     } catch (err) {
@@ -301,14 +354,14 @@ export default function Home() {
     setError("");
     setAnalysis(null);
     try {
-      void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "analysis_started", sessionId, analysisType: tab }) }).catch(() => undefined);
+      void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "analysis_started", sessionId, analysisType }) }).catch(() => undefined);
       const response = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(sessionId ? { "X-GuvenCheck-Session": sessionId } : {}) },
         body: JSON.stringify({
-          type: tab,
-          content: tab === "image" ? undefined : tab === "link" ? normalizeUrl(value) : value.trim(),
-          imageData: tab === "image" ? imageData : undefined,
+          type: analysisType,
+          content: analysisType === "image" ? undefined : analysisType === "link" ? normalizedLink : value.trim(),
+          imageData: analysisType === "image" ? imageData : undefined,
         }),
       });
       const data = await response.json();
@@ -319,13 +372,19 @@ export default function Home() {
       setAnalysis(data);
       void fetch("/api/telemetry", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ event: "analysis_completed", sessionId, analysisType: tab, score: data.score, level: data.level, route: data.meta?.route, latencyMs: data.meta?.latencyMs })
+        body: JSON.stringify({ event: "analysis_completed", sessionId, analysisType, score: data.score, level: data.level, route: data.meta?.route, latencyMs: data.meta?.latencyMs, requestId: data.requestId })
       }).catch(() => undefined);
+      if (data.protectionCandidate?.eligible === true) {
+        void fetch("/api/telemetry", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ event: "protection_candidate_eligible", sessionId, analysisType, requestId: data.requestId })
+        }).catch(() => undefined);
+      }
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Beklenmeyen hata oluştu.";
       setError(message);
-      void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "analysis_error", sessionId, analysisType: tab }) }).catch(() => undefined);
+      void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "analysis_error", sessionId, analysisType }) }).catch(() => undefined);
     } finally {
       setLoading(false);
     }
@@ -339,6 +398,65 @@ export default function Home() {
     setError("");
     setCopied(false);
     setFeedbackState("idle");
+    setPayerRole("");
+    setPaymentInterest("");
+  }
+
+  function saveProtection() {
+    if (!protectionDraft?.eligible) return;
+    setProtectionMessage("");
+    if (!validDraftDate(protectionDraft.deadline)) {
+      setProtectionMessage("Kritik tarih YYYY-AA-GG biçiminde geçerli bir tarih olmalı.");
+      return;
+    }
+    const candidate = sanitizeProtectionCandidate(protectionDraft);
+    if (!candidate.eligible) {
+      setProtectionMessage("Koruma için başlık/aksiyon/özet bilgilerini kontrol et.");
+      return;
+    }
+    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "protection_save_intent", sessionId, analysisType, requestId: analysis?.requestId }) }).catch(() => undefined);
+    const object: ProtectionObject = { ...candidate, id: crypto.randomUUID(), savedAt: new Date().toISOString(), sourceRequestId: analysis?.requestId };
+    window.localStorage.setItem("guvencheck_active_protection", JSON.stringify(object));
+    if (activeProtection) void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "repeat_protection", sessionId, analysisType, requestId: analysis?.requestId }) }).catch(() => undefined);
+    setActiveProtection(object);
+    setProtectionDraft({ ...object });
+    setProtectionUsefulSent(false);
+    setProtectionMessage("Koruma aktif. Kritik aksiyonunu burada takip edebilirsin.");
+    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "protection_saved", sessionId, analysisType, requestId: analysis?.requestId }) }).catch(() => undefined);
+  }
+
+  function removeProtection() {
+    window.localStorage.removeItem("guvencheck_active_protection");
+    setActiveProtection(null);
+    setProtectionMessage("");
+    setProtectionUsefulSent(false);
+    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "protection_removed", sessionId }) }).catch(() => undefined);
+  }
+
+  const activeProtectionTiming = useMemo(
+    () => activeProtection ? getProtectionTiming(activeProtection.deadline) : null,
+    [activeProtection?.deadline],
+  );
+
+  useEffect(() => {
+    if (!sessionId || !activeProtection || analysis || !isProtectionActionDue(activeProtectionTiming)) return;
+    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "protection_action_due_view", sessionId, requestId: activeProtection.sourceRequestId }) }).catch(() => undefined);
+  }, [sessionId, activeProtection?.id, activeProtection?.sourceRequestId, activeProtectionTiming?.state, analysis?.requestId]);
+
+  function markProtectionUseful() {
+    if (protectionUsefulSent || !activeProtection) return;
+    setProtectionUsefulSent(true);
+    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "protection_event_useful", sessionId, requestId: activeProtection.sourceRequestId }) }).catch(() => undefined);
+  }
+
+  function markDeepVerificationInterest() {
+    if (deepVerificationInterested || !deepVerification.eligible) return;
+    setDeepVerificationInterested(true);
+    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "deep_verification_interest", sessionId, analysisType, requestId: analysis?.requestId }) }).catch(() => undefined);
+  }
+
+  function recordRevenueEvidence(event: "payer_role" | "payment_interest", value: "self" | "family" | "work" | "yes" | "maybe" | "no") {
+    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event, value, sessionId, analysisType, requestId: analysis?.requestId }) }).catch(() => undefined);
   }
 
   async function sendFeedback(helpful: boolean, reason = helpful ? "dogru" : "diger") {
@@ -349,11 +467,12 @@ export default function Home() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          helpful, reason, analysisType: tab, score: analysis.score, level: analysis.level,
+          helpful, reason, analysisType, score: analysis.score, level: analysis.level,
           route: analysis.meta?.route, requestId: analysis.requestId, sessionId
         })
       });
       setFeedbackState("sent");
+      if (helpful) void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "core_decision_value", sessionId, analysisType, requestId: analysis?.requestId }) }).catch(() => undefined);
     } catch {
       setFeedbackState("idle");
     }
@@ -361,17 +480,16 @@ export default function Home() {
 
   const submitLabel = loading
     ? "Analiz sürüyor…"
-    : canSubmit
-      ? "Kontrol et"
-      : tab === "image"
-        ? "Önce ekran görüntüsü seç"
-        : tab === "text"
-          ? "Önce mesajı yapıştır"
-          : "Önce linki gir";
+    : processingImage
+      ? "Görsel hazırlanıyor…"
+      : canSubmit
+        ? "Kontrol et"
+        : "Mesaj, link veya ekran görüntüsü ekle";
 
   async function shareResult() {
     if (!analysis) return;
-    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "share_clicked", sessionId, analysisType: tab, score: analysis.score, level: analysis.level }) }).catch(() => undefined);
+    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "share_clicked", sessionId, analysisType, score: analysis.score, level: analysis.level }) }).catch(() => undefined);
+    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "trusted_helper_share", sessionId, analysisType, requestId: analysis?.requestId }) }).catch(() => undefined);
     const appUrl = window.location.origin;
     const text = `GüvenCheck: ${levelText[analysis.level]}. ${analysis.actions[0] || analysis.summary} — Göndermeden. Ödemeden. Tıklamadan önce.\n\nSen de şüpheli bir içerik aldıysan kontrol et: ${appUrl}`;
     const card = await createShareCard(analysis, appUrl).catch(() => null);
@@ -407,41 +525,52 @@ export default function Home() {
         </div>
       </header>
 
+      {activeProtection && !analysis && (
+        <section className="card">
+          <div className="eyebrow">KORUMA AKTİF</div>
+          <h2>{activeProtection.title || "Korunan taahhüt"}</h2>
+          {activeProtection.provider && <p><strong>Sağlayıcı:</strong> {activeProtection.provider}</p>}
+          {activeProtection.deadline && <p><strong>Kritik tarih:</strong> {activeProtection.deadline}</p>}
+          {activeProtectionTiming && <p className="protectionTiming"><strong>{activeProtectionTiming.label}</strong></p>}
+          <p><strong>Sıradaki aksiyon:</strong> {activeProtection.nextAction}</p>
+          {isProtectionActionDue(activeProtectionTiming) && (
+            <button type="button" className="secondary protectionUseful" disabled={protectionUsefulSent} onClick={markProtectionUseful}>{protectionUsefulSent ? "Geri bildirim alındı" : "Bu hatırlatma işime yaradı"}</button>
+          )}
+          <button type="button" className="secondary" onClick={removeProtection}>Koruma kaydını kaldır</button>
+        </section>
+      )}
+
       {!analysis ? (
         <section className="card heroCard">
           <h1>Şüpheli bir şey mi var?</h1>
-          <p className="lead">Mesajı, linki veya ekran görüntüsünü kontrol et. Risk seviyesini ve ne yapman gerektiğini sade Türkçeyle gör.</p>
+          <p className="lead">Şüpheli dijital içeriği tek yerden gönder. Mesaj, link veya ekran görüntüsü fark etmez; GüvenCheck uygun kontrol yolunu kendi seçer.</p>
 
-          <div className="tabs" role="tablist" aria-label="Analiz türü">
-            <button className={`imageTab ${tab === "image" ? "active" : ""}`} onClick={() => switchTab("image")}><span>Ekran görüntüsü</span><em>En kolay yol</em></button>
-            <button className={tab === "text" ? "active" : ""} onClick={() => switchTab("text")}>Mesaj</button>
-            <button className={tab === "link" ? "active" : ""} onClick={() => switchTab("link")}>Link</button>
+          <div className="inputWrap">
+            <textarea
+              value={value}
+              maxLength={12000}
+              inputMode="text"
+              onChange={(e) => { setValue(e.target.value); setImageData(null); setImageName(""); setError(""); }}
+              placeholder="Şüpheli mesajı, linki, teklif veya taahhüt metnini buraya yapıştır..."
+              rows={6}
+            />
+            {value.length > 0 && !imageData && <span className="charCount">{value.length}/12000</span>}
           </div>
 
-          {tab === "image" ? (
-            <label className={`dropzone ${imageData ? "hasImage" : ""}`}>
-              <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleImage} />
-              {!imageData && <span className="camera" aria-hidden="true">▣</span>}
-              <strong>{processingImage ? "Görsel hazırlanıyor…" : imageName || "Ekran görüntüsü seç"}</strong>
-              {!imageData && <span>SMS, WhatsApp, e-posta veya ilan ekranı</span>}
-              {imageData && <img className="preview" src={imageData} alt="Seçilen ekran görüntüsü" />}
-              {imageData && <span className="changeImage">Değiştirmek için dokun</span>}
-            </label>
-          ) : (
-            <div className="inputWrap">
-              <textarea
-                value={value}
-                maxLength={12000}
-                inputMode={tab === "link" ? "url" : "text"}
-                onChange={(e) => { setValue(e.target.value); setError(""); }}
-                placeholder={tab === "link" ? "https://ornek-site.com/..." : "Örn: Sayın müşterimiz, hesabınız askıya alınacaktır..."}
-                rows={7}
-              />
-              {tab === "text" && value.length > 0 && <span className="charCount">{value.length}/12000</span>}
-            </div>
+          <label className={`dropzone ${imageData ? "hasImage" : ""}`}>
+            <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleImage} />
+            {!imageData && <span className="camera" aria-hidden="true">▣</span>}
+            <strong>{processingImage ? "Görsel hazırlanıyor…" : imageName || "Ekran görüntüsü ekle"}</strong>
+            {!imageData && <span>İstersen screenshot ekle; sistem içerik türünü kendi seçer.</span>}
+            {imageData && <img className="preview" src={imageData} alt="Seçilen ekran görüntüsü" />}
+            {imageData && <span className="changeImage">Değiştirmek için dokun</span>}
+          </label>
+          {imageData && (
+            <button type="button" className="secondary" onClick={() => { setImageData(null); setImageName(""); }}>
+              Görseli kaldır
+            </button>
           )}
 
-          {tab === "link" && !linkIsValid && <div className="hintError">Geçerli bir alan adı veya link gir. Örn: guvencheck.com veya https://guvencheck.com</div>}
           {error && <div className="error">{error}</div>}
 
           <button className="primary" disabled={!canSubmit || loading} onClick={analyze}>
@@ -476,6 +605,71 @@ export default function Home() {
               <p><strong>Belirsizlik: {uncertaintyText[analysis.decisionSupport.uncertainty]}</strong> — {analysis.decisionSupport.uncertaintySummary}</p>
               <p><strong>Karar etkisi:</strong> {analysis.decisionSupport.implication}</p>
               <p><strong>Güvenli sonraki adım:</strong> {analysis.decisionSupport.nextAction}</p>
+            </div>
+          )}
+
+          {analysis.officialSafePath && (
+            <div className="section decisionSupport">
+              <h3>ResmÃ® / gÃ¼venli yol</h3>
+              <p><strong>{analysis.officialSafePath.title}</strong></p>
+              <p>{analysis.officialSafePath.action}</p>
+            </div>
+          )}
+
+          {analysis.manipulationTactics && analysis.manipulationTactics.length > 0 && (
+            <div className="section decisionSupport">
+              <h3>Nasıl yönlendirilmeye çalışılıyor?</h3>
+              {analysis.manipulationSummary && <p>{analysis.manipulationSummary}</p>}
+              <ul>{analysis.manipulationTactics.map((tactic) => <li key={tactic}>{MANIPULATION_LABELS[tactic]}</li>)}</ul>
+            </div>
+          )}
+
+          {protectionBooster && (
+            <div className="section decisionSupport">
+              <h3>Bir dahaki sefere daha erken fark et</h3>
+              <p><strong>{protectionBooster.title}</strong></p>
+              <p>{protectionBooster.action}</p>
+            </div>
+          )}
+
+          {deepVerification.eligible && (
+            <div className="section decisionSupport">
+              <h3>Daha derin doğrulama anlamlı olabilir</h3>
+              <p>{deepVerification.reason}</p>
+              <p>Bu buton ödeme veya sipariş başlatmaz; yalnız bu tür vakalarda daha derin doğrulamaya ilgi olup olmadığını ölçer.</p>
+              <button type="button" className="secondary" disabled={deepVerificationInterested} onClick={markDeepVerificationInterest}>{deepVerificationInterested ? "İlgin kaydedildi" : "Daha derin doğrulamayla ilgileniyorum"}</button>
+              {deepVerificationInterested && (
+                <div className="feedbackReasons">
+                  <strong>Bu tür doğrulamayı en çok kimin için kullanırdın?</strong>
+                  <div className="feedbackButtons">
+                    <button disabled={Boolean(payerRole)} onClick={() => { setPayerRole("self"); recordRevenueEvidence("payer_role", "self"); }}>Kendim</button>
+                    <button disabled={Boolean(payerRole)} onClick={() => { setPayerRole("family"); recordRevenueEvidence("payer_role", "family"); }}>Ailem</button>
+                    <button disabled={Boolean(payerRole)} onClick={() => { setPayerRole("work"); recordRevenueEvidence("payer_role", "work"); }}>İş için</button>
+                  </div>
+                  <strong>Ek kanıt üreten ücretli bir seçenek olsa değerlendirir miydin?</strong>
+                  <div className="feedbackButtons">
+                    <button disabled={Boolean(paymentInterest)} onClick={() => { setPaymentInterest("yes"); recordRevenueEvidence("payment_interest", "yes"); }}>Evet</button>
+                    <button disabled={Boolean(paymentInterest)} onClick={() => { setPaymentInterest("maybe"); recordRevenueEvidence("payment_interest", "maybe"); }}>Belki</button>
+                    <button disabled={Boolean(paymentInterest)} onClick={() => { setPaymentInterest("no"); recordRevenueEvidence("payment_interest", "no"); }}>Hayır</button>
+                  </div>
+                  {(payerRole || paymentInterest) && <p>Bu yalnız ürün araştırmasıdır; ödeme veya sipariş başlatmaz.</p>}
+                </div>
+              )}
+            </div>
+          )}
+
+          {protectionDraft?.eligible && (
+            <div className="section decisionSupport">
+              <h3>Bu kararı korumaya al</h3>
+              <p>Kaydetmeden önce alanları kontrol edip düzeltebilirsin.</p>
+              <label className="protectionField">Başlık<input value={protectionDraft.title} onChange={(e) => setProtectionDraft(d => d ? { ...d, title: e.target.value } : d)} /></label>
+              <label className="protectionField">Sağlayıcı<input value={protectionDraft.provider} onChange={(e) => setProtectionDraft(d => d ? { ...d, provider: e.target.value } : d)} /></label>
+              <label className="protectionField">Kritik tarih (opsiyonel)<input value={protectionDraft.deadline} placeholder="YYYY-AA-GG" onChange={(e) => setProtectionDraft(d => d ? { ...d, deadline: e.target.value } : d)} /></label>
+              <label className="protectionField">Sıradaki aksiyon<textarea rows={3} value={protectionDraft.nextAction} onChange={(e) => setProtectionDraft(d => d ? { ...d, nextAction: e.target.value } : d)} /></label>
+              <p>{protectionDraft.summary}</p>
+              <p>Yalnız bu yapılandırılmış özet cihazında saklanır; gönderdiğin ham içerik kaydedilmez.</p>
+              <button type="button" className="secondary" onClick={saveProtection}>Korumaya al</button>
+              {protectionMessage && <p><strong>{protectionMessage}</strong></p>}
             </div>
           )}
 
@@ -525,7 +719,7 @@ export default function Home() {
 
           <div className="buttonRow">
             <button className="secondary" onClick={reset}>Yeni kontrol</button>
-            <button className="primary share" onClick={shareResult}>{copied ? "Kopyalandı ✓" : "Aileme gönder"}</button>
+            <button className="primary share" onClick={shareResult}>{copied ? "Kopyalandı ✓" : "Güvendiğim birine gönder"}</button>
           </div>
         </section>
       )}

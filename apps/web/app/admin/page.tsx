@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { analyticsConfigured, readBetaEvents, readEconomicEvents, type BetaEventRow, type EconomicEventRow } from "../../lib/supabase-rest";
+import { summarizeM3Evidence } from "../../lib/m3-evidence-readout";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -76,6 +77,12 @@ export default async function AdminPage() {
   const byReason = countBy(feedback.filter(r => r.helpful === false), r => r.feedback_reason);
   const recent = rows.filter(r => r.event_type !== "page_view").slice(0, 30);
   const attempts = completed.length + errors.length;
+  const m3 = summarizeM3Evidence(rows);
+  const protectionSaveRate = pct(m3.protectionSaved, m3.protectionEligible);
+  const protectionUsefulRate = pct(m3.protectionUseful, m3.protectionDueViews);
+  const deepInterestRate = pct(m3.deepInterested, m3.deepEligible);
+  const reuseAttempts = m3.reuseHits + m3.reuseMisses;
+  const reuseHitRate = pct(m3.reuseHits, reuseAttempts);
 
   const todayStart = istanbulDayStartIso();
   const todayEconomic = economicRows.filter(r => r.created_at && r.created_at >= todayStart);
@@ -107,6 +114,28 @@ export default async function AdminPage() {
       <div className="adminMetric"><span>Beta sağlık</span><strong>{errors.length === 0 && completed.length > 0 ? "İyi" : completed.length ? "İzle" : "—"}</strong><small>Kritik metrik: hata + geri bildirim</small></div>
     </section>
 
+    <section className="adminPanel">
+      <h2>M3.2 ürün / iş kanıtı</h2>
+      <p className="adminPrivacy">Oranlar mümkün olduğunda benzersiz bounded analysis request id üzerinden hesaplanır; analiz içeriği burada okunmaz veya gösterilmez.</p>
+      <div className="adminGrid">
+        <div className="adminMetric"><span>Karar değeri pozitif</span><strong>{m3.coreDecisionValue}</strong><small>“İşime yaradı” kanıtı</small></div>
+        <div className="adminMetric"><span>Protection uygun vaka</span><strong>{m3.protectionEligible}</strong><small>Kaydetme paydası</small></div>
+        <div className="adminMetric"><span>Protection kaydetme</span><strong>{m3.protectionEligible ? `${protectionSaveRate}%` : "—"}</strong><small>{m3.protectionSaved}/{m3.protectionEligible} uygun vaka</small></div>
+        <div className="adminMetric"><span>Kritik aksiyon görünümü</span><strong>{m3.protectionDueViews}</strong><small>Gerçek actionable exposure</small></div>
+        <div className="adminMetric"><span>Faydalı protection olayı</span><strong>{m3.protectionDueViews ? `${protectionUsefulRate}%` : "—"}</strong><small>{m3.protectionUseful}/{m3.protectionDueViews} exposure</small></div>
+        <div className="adminMetric"><span>Tekrar protection</span><strong>{m3.repeatProtection}</strong><small>Yeni protection davranışı</small></div>
+        <div className="adminMetric"><span>Deep Verification ilgi</span><strong>{m3.deepEligible ? `${deepInterestRate}%` : "—"}</strong><small>{m3.deepInterested}/{m3.deepEligible} uygun vaka</small></div>
+        <div className="adminMetric"><span>Trusted Helper paylaşımı</span><strong>{m3.trustedHelperShares}</strong><small>Benzersiz analiz</small></div>
+        <div className="adminMetric"><span>Reuse hit oranı</span><strong>{reuseAttempts ? `${reuseHitRate}%` : "—"}</strong><small>{m3.reuseHits} hit · {m3.reuseMisses} miss</small></div>
+        <div className="adminMetric"><span>Yönsel kaçınılan maliyet</span><strong>{m3.reuseHits ? fmtUsd(m3.avoidedCostUsd) : "—"}</strong><small>Reuse hit evidence toplamı</small></div>
+      </div>
+      <div className="adminPanels adminPanelsFour">
+        <div className="adminPanel"><h2>Ödeme ilgisi</h2><div className="adminReason"><span>Evet</span><b>{m3.paymentInterest.yes || 0}</b></div><div className="adminReason"><span>Belki</span><b>{m3.paymentInterest.maybe || 0}</b></div><div className="adminReason"><span>Hayır</span><b>{m3.paymentInterest.no || 0}</b></div></div>
+        <div className="adminPanel"><h2>Payer rolü</h2><div className="adminReason"><span>Kendim</span><b>{m3.payerRoles.self || 0}</b></div><div className="adminReason"><span>Aile</span><b>{m3.payerRoles.family || 0}</b></div><div className="adminReason"><span>İş</span><b>{m3.payerRoles.work || 0}</b></div></div>
+        <div className="adminPanel"><h2>Reuse / knowledge</h2><div className="adminReason"><span>Reuse hit</span><b>{m3.reuseHits}</b></div><div className="adminReason"><span>Reuse miss</span><b>{m3.reuseMisses}</b></div><div className="adminReason"><span>Curated hit</span><b>{m3.curatedHits}</b></div></div>
+        <div className="adminPanel"><h2>Deep Verification</h2><div className="adminReason"><span>Uygun</span><b>{m3.deepEligible}</b></div><div className="adminReason"><span>İlgilenen</span><b>{m3.deepInterested}</b></div><div className="adminReason"><span>İlgi oranı</span><b>{m3.deepEligible ? `${deepInterestRate}%` : "—"}</b></div></div>
+      </div>
+    </section>
     <section className="adminPanels adminPanelsFour">
       <div className="adminPanel"><h2>Analiz türleri</h2>{Object.keys(byType).length ? Object.entries(byType).map(([k,v]) => <div className="adminBarRow" key={k}><span>{typeLabels[k] || k}</span><b>{v}</b><i style={{width:`${pct(v, completed.length)}%`}} /></div>) : <p>Henüz veri yok.</p>}</div>
       <div className="adminPanel"><h2>Risk dağılımı</h2>{Object.keys(byLevel).length ? Object.entries(byLevel).map(([k,v]) => <div className="adminBarRow" key={k}><span>{k === "high" ? "Yüksek" : k === "medium" ? "Orta" : "Düşük"}</span><b>{v}</b><i style={{width:`${pct(v, completed.length)}%`}} /></div>) : <p>Henüz veri yok.</p>}</div>
