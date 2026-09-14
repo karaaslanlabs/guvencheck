@@ -1,8 +1,12 @@
 import { insertBetaEvent, readAnalysisReuse, upsertAnalysisReuse, type AnalysisReuseRow } from './supabase-rest';
-import { ANALYSIS_CONTRACT_VERSION, createReuseFingerprint, directionalAvoidedCost, linkReuseTtlMs, prepareResultForReuse, reuseAgeSeconds } from './analysis-reuse';
+import { ANALYSIS_CONTRACT_VERSION, createReuseFingerprint, directionalAvoidedCost, linkReuseTtlMs, prepareResultForReuse, reuseAgeSeconds, reuseSecretConfigured } from './analysis-reuse';
 
 function secret() {
   return process.env.ANALYSIS_REUSE_SECRET?.trim() || '';
+}
+
+export function reuseConfigured() {
+  return reuseSecretConfigured(process.env.ANALYSIS_REUSE_SECRET);
 }
 
 async function persistReuseEvidence(eventType: string, requestId: string, route: string, value: Record<string, unknown>) {

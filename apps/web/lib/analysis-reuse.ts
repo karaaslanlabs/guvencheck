@@ -24,6 +24,10 @@ export function canonicalizeLinkForReuse(value: string) {
   }
 }
 
+export function reuseSecretConfigured(value: string | undefined | null) {
+  return typeof value === 'string' && value.trim().length >= 16;
+}
+
 export function createReuseFingerprint(value: string, secret: string) {
   const canonical = canonicalizeLinkForReuse(value);
   if (!canonical || secret.length < 16) return null;
@@ -34,7 +38,7 @@ export function createReuseFingerprint(value: string, secret: string) {
 
 export function linkReuseTtlMs(result: any) {
   const level = result?.level;
-  const webVerified = result?.webVerified === true || result?.verificationStatus === 'checked_no_strong_signal';
+  const webVerified = result?.webVerified === true;
   if (level === 'high') return 7 * 24 * 60 * 60 * 1000;
   if (level === 'medium') return 12 * 60 * 60 * 1000;
   if (level === 'low' && webVerified) return 60 * 60 * 1000;

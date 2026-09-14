@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ANALYSIS_CONTRACT_VERSION, canonicalizeLinkForReuse, createReuseFingerprint, directionalAvoidedCost, linkReuseTtlMs, prepareResultForReuse, reuseAgeSeconds } from '../lib/analysis-reuse.ts';
+import { ANALYSIS_CONTRACT_VERSION, canonicalizeLinkForReuse, createReuseFingerprint, directionalAvoidedCost, linkReuseTtlMs, prepareResultForReuse, reuseAgeSeconds, reuseSecretConfigured } from '../lib/analysis-reuse.ts';
 
 test('canonicalizes tracking-only link variants to the same value', () => {
   assert.equal(
@@ -19,6 +19,7 @@ test('fingerprint is secret-bound and contract-version-bound', () => {
 
 test('does not reuse unverified low-risk results', () => {
   assert.equal(linkReuseTtlMs({ level: 'low', webVerified: false }), 0);
+  assert.equal(linkReuseTtlMs({ level: 'low', webVerified: false, verificationStatus: 'checked_no_strong_signal' }), 0);
   assert.equal(linkReuseTtlMs({ level: 'low', webVerified: true }), 60 * 60 * 1000);
   assert.equal(linkReuseTtlMs({ level: 'high' }), 7 * 24 * 60 * 60 * 1000);
 });
@@ -43,4 +44,10 @@ test('keeps only bounded directional avoided cost', () => {
   assert.equal(directionalAvoidedCost(-1), null);
   assert.equal(directionalAvoidedCost(101), null);
   assert.equal(directionalAvoidedCost('bad'), null);
+});
+
+test('does not enable reuse without a sufficiently strong server secret', () => {
+  assert.equal(reuseSecretConfigured(undefined), false);
+  assert.equal(reuseSecretConfigured('short'), false);
+  assert.equal(reuseSecretConfigured('0123456789abcdef'), true);
 });
