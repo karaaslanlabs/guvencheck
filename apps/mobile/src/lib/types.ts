@@ -1,5 +1,21 @@
 export type AnalysisType = 'text' | 'link' | 'image';
 export type RiskLevel = 'low' | 'medium' | 'high';
+export type ProtectionKind = 'none' | 'trial' | 'subscription' | 'commitment' | 'purchase' | 'deadline';
+
+export type ProtectionCandidate = {
+  eligible: boolean;
+  kind: ProtectionKind;
+  title: string;
+  provider: string;
+  deadline: string;
+  nextAction: string;
+  summary: string;
+};
+
+export type ProtectionObject = ProtectionCandidate & {
+  id: string;
+  savedAt: string;
+};
 
 export type AnalysisResult = {
   score: number;
@@ -8,6 +24,7 @@ export type AnalysisResult = {
   signals: string[];
   manipulationTactics?: string[];
   manipulationSummary?: string;
+  protectionCandidate?: ProtectionCandidate;
   actions: string[];
   avoid: string[];
   confidence: 'low' | 'medium' | 'high';

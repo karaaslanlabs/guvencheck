@@ -2,6 +2,7 @@
 
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { MANIPULATION_LABELS, type ManipulationTactic } from "../lib/manipulation-lens";
+import { sanitizeProtectionCandidate, type ProtectionCandidate, type ProtectionObject } from "../lib/commitment-protection";
 
 type RiskLevel = "low" | "medium" | "high";
 type Analysis = {
@@ -13,6 +14,7 @@ type Analysis = {
   signals: string[];
   manipulationTactics?: ManipulationTactic[];
   manipulationSummary?: string;
+  protectionCandidate?: ProtectionCandidate;
   actions: string[];
   avoid: string[];
   confidence: "low" | "medium" | "high";
@@ -59,6 +61,13 @@ const shortLevelText: Record<RiskLevel, string> = {
 };
 
 const uncertaintyText = { low: "Düşük", medium: "Orta", high: "Yüksek" } as const;
+
+function validDraftDate(value: string) {
+  if (!value) return true;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
 
 function normalizeUrl(value: string) {
   const trimmed = value.trim();
@@ -239,6 +248,9 @@ export default function Home() {
   const [feedbackState, setFeedbackState] = useState<"idle" | "choose" | "sending" | "sent">("idle");
   const [sessionId, setSessionId] = useState("");
   const [showSplash, setShowSplash] = useState(false);
+  const [activeProtection, setActiveProtection] = useState<ProtectionObject | null>(null);
+  const [protectionMessage, setProtectionMessage] = useState("");
+  const [protectionDraft, setProtectionDraft] = useState<ProtectionCandidate | null>(null);
 
   useEffect(() => {
     const standalone = window.matchMedia?.("(display-mode: standalone)").matches || Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
@@ -261,6 +273,30 @@ export default function Home() {
       body: JSON.stringify({ event: "page_view", sessionId: id })
     }).catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    const raw = window.localStorage.getItem("guvencheck_active_protection");
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as Partial<ProtectionObject>;
+      const candidate = sanitizeProtectionCandidate(parsed);
+      if (!candidate.eligible || !parsed.id || !parsed.savedAt) throw new Error("invalid protection");
+      setActiveProtection({ ...candidate, id: String(parsed.id), savedAt: String(parsed.savedAt) });
+    } catch {
+      window.localStorage.removeItem("guvencheck_active_protection");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!sessionId || !activeProtection) return;
+    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "protection_status_view", sessionId }) }).catch(() => undefined);
+  }, [sessionId, activeProtection?.id]);
+
+  useEffect(() => {
+    const candidate = analysis?.protectionCandidate;
+    setProtectionDraft(candidate?.eligible ? { ...candidate } : null);
+    setProtectionMessage("");
+  }, [analysis]);
 
   const normalizedLink = normalizeUrl(value);
   const analysisType: "text" | "link" | "image" = imageData ? "image" : normalizedLink ? "link" : "text";
@@ -335,6 +371,34 @@ export default function Home() {
     setFeedbackState("idle");
   }
 
+  function saveProtection() {
+    if (!protectionDraft?.eligible) return;
+    setProtectionMessage("");
+    if (!validDraftDate(protectionDraft.deadline)) {
+      setProtectionMessage("Kritik tarih YYYY-AA-GG biçiminde geçerli bir tarih olmalı.");
+      return;
+    }
+    const candidate = sanitizeProtectionCandidate(protectionDraft);
+    if (!candidate.eligible) {
+      setProtectionMessage("Koruma için başlık/aksiyon/özet bilgilerini kontrol et.");
+      return;
+    }
+    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "protection_save_intent", sessionId, analysisType }) }).catch(() => undefined);
+    const object: ProtectionObject = { ...candidate, id: crypto.randomUUID(), savedAt: new Date().toISOString() };
+    window.localStorage.setItem("guvencheck_active_protection", JSON.stringify(object));
+    setActiveProtection(object);
+    setProtectionDraft({ ...object });
+    setProtectionMessage("Koruma aktif. Kritik aksiyonunu burada takip edebilirsin.");
+    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "protection_saved", sessionId, analysisType }) }).catch(() => undefined);
+  }
+
+  function removeProtection() {
+    window.localStorage.removeItem("guvencheck_active_protection");
+    setActiveProtection(null);
+    setProtectionMessage("");
+    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "protection_removed", sessionId }) }).catch(() => undefined);
+  }
+
   async function sendFeedback(helpful: boolean, reason = helpful ? "dogru" : "diger") {
     if (!analysis || feedbackState === "sending" || feedbackState === "sent") return;
     setFeedbackState("sending");
@@ -398,6 +462,17 @@ export default function Home() {
           <div className="tagline">Dijital risk kontrolü</div>
         </div>
       </header>
+
+      {activeProtection && !analysis && (
+        <section className="card">
+          <div className="eyebrow">KORUMA AKTİF</div>
+          <h2>{activeProtection.title || "Korunan taahhüt"}</h2>
+          {activeProtection.provider && <p><strong>Sağlayıcı:</strong> {activeProtection.provider}</p>}
+          {activeProtection.deadline && <p><strong>Kritik tarih:</strong> {activeProtection.deadline}</p>}
+          <p><strong>Sıradaki aksiyon:</strong> {activeProtection.nextAction}</p>
+          <button type="button" className="secondary" onClick={removeProtection}>Koruma kaydını kaldır</button>
+        </section>
+      )}
 
       {!analysis ? (
         <section className="card heroCard">
@@ -472,6 +547,21 @@ export default function Home() {
               <h3>Nasıl yönlendirilmeye çalışılıyor?</h3>
               {analysis.manipulationSummary && <p>{analysis.manipulationSummary}</p>}
               <ul>{analysis.manipulationTactics.map((tactic) => <li key={tactic}>{MANIPULATION_LABELS[tactic]}</li>)}</ul>
+            </div>
+          )}
+
+          {protectionDraft?.eligible && (
+            <div className="section decisionSupport">
+              <h3>Bu kararı korumaya al</h3>
+              <p>Kaydetmeden önce alanları kontrol edip düzeltebilirsin.</p>
+              <label className="protectionField">Başlık<input value={protectionDraft.title} onChange={(e) => setProtectionDraft(d => d ? { ...d, title: e.target.value } : d)} /></label>
+              <label className="protectionField">Sağlayıcı<input value={protectionDraft.provider} onChange={(e) => setProtectionDraft(d => d ? { ...d, provider: e.target.value } : d)} /></label>
+              <label className="protectionField">Kritik tarih (opsiyonel)<input value={protectionDraft.deadline} placeholder="YYYY-AA-GG" onChange={(e) => setProtectionDraft(d => d ? { ...d, deadline: e.target.value } : d)} /></label>
+              <label className="protectionField">Sıradaki aksiyon<textarea rows={3} value={protectionDraft.nextAction} onChange={(e) => setProtectionDraft(d => d ? { ...d, nextAction: e.target.value } : d)} /></label>
+              <p>{protectionDraft.summary}</p>
+              <p>Yalnız bu yapılandırılmış özet cihazında saklanır; gönderdiğin ham içerik kaydedilmez.</p>
+              <button type="button" className="secondary" onClick={saveProtection}>Korumaya al</button>
+              {protectionMessage && <p><strong>{protectionMessage}</strong></p>}
             </div>
           )}
 

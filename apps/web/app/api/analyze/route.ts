@@ -3,6 +3,7 @@ import { aiAnalysisEnabled, checkEconomicGate, persistEconomicEvent } from "../.
 import { preserveProductResultWithShadow } from "../../../lib/agent-platform-shadow";
 import { withDecisionSupport } from "../../../lib/decision-support";
 import { MANIPULATION_TACTICS, sanitizeManipulationTactics } from "../../../lib/manipulation-lens";
+import { sanitizeProtectionCandidate } from "../../../lib/commitment-protection";
 
 export const runtime = "nodejs";
 
@@ -58,6 +59,20 @@ const schema = {
     signals: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 6 },
     manipulationTactics: { type: "array", items: { type: "string", enum: [...MANIPULATION_TACTICS] }, maxItems: 4 },
     manipulationSummary: { type: "string" },
+    protectionCandidate: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        eligible: { type: "boolean" },
+        kind: { type: "string", enum: ["none", "trial", "subscription", "commitment", "purchase", "deadline"] },
+        title: { type: "string" },
+        provider: { type: "string" },
+        deadline: { type: "string" },
+        nextAction: { type: "string" },
+        summary: { type: "string" }
+      },
+      required: ["eligible", "kind", "title", "provider", "deadline", "nextAction", "summary"]
+    },
     actions: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 5 },
     avoid: { type: "array", items: { type: "string" }, maxItems: 5 },
     confidence: { type: "string", enum: ["low", "medium", "high"] },
@@ -66,7 +81,7 @@ const schema = {
     verifiedFindings: { type: "array", items: { type: "string" }, maxItems: 5 },
     extractedUrls: { type: "array", items: { type: "string" }, maxItems: 3 }
   },
-  required: ["score", "level", "title", "summary", "signals", "manipulationTactics", "manipulationSummary", "actions", "avoid", "confidence", "verificationStatus", "verificationSummary", "verifiedFindings", "extractedUrls"]
+  required: ["score", "level", "title", "summary", "signals", "manipulationTactics", "manipulationSummary", "protectionCandidate", "actions", "avoid", "confidence", "verificationStatus", "verificationSummary", "verifiedFindings", "extractedUrls"]
 };
 
 const SYSTEM_PROMPT = `Sen GüvenCheck adlı Türkiye odaklı dijital güven asistanının risk analiz motorusun.
@@ -94,6 +109,10 @@ Kurallar:
 - manipulationTactics yalnız şu kimliklerden oluşabilir: urgency_time_pressure, authority_impersonation, scarcity_too_good_to_be_true, secrecy_isolation, emotional_leverage, trust_building_social_engineering, payment_channel_redirection.
 - Bir taktik için yeterli kanıt yoksa ekleme. Hiç taktik yoksa manipulationTactics=[] ve manipulationSummary="" döndür.
 - manipulationSummary en fazla 2 kısa cümle olsun; kullanıcıya nasıl baskı/yönlendirme uygulandığını sade Türkçeyle açıkla, niyet uydurma.
+- Commitment Protection için yalnız açıkça görülen trial, subscription, commitment, purchase veya deadline bağlamını protectionCandidate alanına çıkar.
+- Önemli tarih açıkça görünmüyorsa deadline="" döndür; tarih uydurma. Tarih varsa YYYY-MM-DD kullan.
+- protectionCandidate yalnız kullanıcı daha sonra hatırlamak/korumak isteyebilecek somut bir ekonomik taahhüt veya kritik tarih varsa eligible=true olsun.
+- Ham mesajı, URL'yi veya kişisel veriyi protectionCandidate alanına kopyalama. Kısa başlık, sağlayıcı adı, kritik aksiyon ve özet yeterlidir.
 - Kullanıcı için en kritik 3-5 sinyali öne çıkar; aynı şeyi farklı cümlelerle tekrarlama.`;
 
 function normalizeHttpUrl(value: string) {
@@ -188,6 +207,7 @@ function sanitizeAnalysis(parsed: any) {
     signals: Array.isArray(parsed?.signals) ? parsed.signals.map(cleanModelText).filter(Boolean).slice(0, 5) : [],
     manipulationTactics: sanitizeManipulationTactics(parsed?.manipulationTactics),
     manipulationSummary: cleanModelText(parsed?.manipulationSummary).slice(0, 420),
+    protectionCandidate: sanitizeProtectionCandidate(parsed?.protectionCandidate),
     actions: Array.isArray(parsed?.actions) ? parsed.actions.map(cleanModelText).filter(Boolean).slice(0, 5) : [],
     avoid: Array.isArray(parsed?.avoid) ? parsed.avoid.map(cleanModelText).filter(Boolean).slice(0, 4) : [],
     verificationSummary: cleanModelText(parsed?.verificationSummary).slice(0, 600),

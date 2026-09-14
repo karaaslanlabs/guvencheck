@@ -59,7 +59,11 @@ export type TelemetryEvent =
   | 'analysis_completed'
   | 'analysis_error'
   | 'share_clicked'
-  | 'privacy_view';
+  | 'privacy_view'
+  | 'protection_save_intent'
+  | 'protection_saved'
+  | 'protection_removed'
+  | 'protection_status_view';
 
 export type TelemetryInput = {
   event: TelemetryEvent;

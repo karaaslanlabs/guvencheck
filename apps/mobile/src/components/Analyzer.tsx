@@ -16,7 +16,8 @@ import { analyze, sendTelemetry } from '../lib/api';
 import { uriToDataUrl } from '../lib/image';
 import { looksLikeUrl, normalizeUrl } from '../lib/url';
 import { createSessionId, getInstallId } from '../lib/install-id';
-import type { AnalysisResult, AnalysisType } from '../lib/types';
+import { clearProtection, loadProtection, saveProtection } from '../lib/protection-store';
+import type { AnalysisResult, AnalysisType, ProtectionCandidate, ProtectionObject } from '../lib/types';
 import { ResultCard } from './ResultCard';
 import { Shield } from './Shield';
 
@@ -30,6 +31,13 @@ type Prefill = {
 
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+function validDraftDate(value: string) {
+  if (!value) return true;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
 export function Analyzer({ prefill }: { prefill?: Prefill }) {
   const [value, setValue] = useState(prefill?.text || '');
   const [imageUri, setImageUri] = useState(prefill?.imageUri || '');
@@ -40,6 +48,10 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const sessionIdRef = useRef('');
   const [sessionId, setSessionId] = useState('');
+  const [activeProtection, setActiveProtection] = useState<ProtectionObject | null>(null);
+  const [protectionSaving, setProtectionSaving] = useState(false);
+  const [protectionError, setProtectionError] = useState('');
+  const [protectionDraft, setProtectionDraft] = useState<ProtectionCandidate | null>(null);
 
   async function ensureSessionId() {
     if (sessionIdRef.current) return sessionIdRef.current;
@@ -69,6 +81,21 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
     };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    void loadProtection()
+      .then(async protection => {
+        if (!active) return;
+        setActiveProtection(protection);
+        if (protection) {
+          const id = await ensureSessionId();
+          void sendTelemetry({ event: 'protection_status_view', sessionId: id }).catch(() => {});
+        }
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
+
   const analysisType: AnalysisType = imageUri ? 'image' : looksLikeUrl(value) ? 'link' : 'text';
 
   const canSubmit = useMemo(
@@ -77,6 +104,12 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
   );
 
   const isSharedPrefill = Boolean(prefill && (imageUri || value.trim()));
+
+  useEffect(() => {
+    const candidate = result?.protectionCandidate;
+    setProtectionDraft(candidate?.eligible ? { ...candidate } : null);
+    setProtectionError('');
+  }, [result]);
 
   async function pickImage() {
     const res = await ImagePicker.launchImageLibraryAsync({
@@ -175,6 +208,43 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
     setImageUri('');
   }
 
+  async function saveCurrentProtection() {
+    if (!protectionDraft?.eligible || protectionSaving) return;
+    setProtectionError('');
+    if (!validDraftDate(protectionDraft.deadline)) {
+      setProtectionError('Kritik tarih YYYY-AA-GG biçiminde geçerli bir tarih olmalı.');
+      return;
+    }
+    setProtectionSaving(true);
+    const id = await ensureSessionId().catch(() => '');
+    if (id) void sendTelemetry({ event: 'protection_save_intent', sessionId: id, analysisType }).catch(() => {});
+    try {
+      const object = await saveProtection(protectionDraft);
+      setActiveProtection(object);
+      setProtectionDraft({ ...object });
+      if (id) void sendTelemetry({ event: 'protection_saved', sessionId: id, analysisType }).catch(() => {});
+    } catch (error) {
+      setProtectionError(error instanceof Error ? error.message : 'Koruma kaydı oluşturulamadı.');
+    } finally {
+      setProtectionSaving(false);
+    }
+  }
+
+  async function removeActiveProtection() {
+    await clearProtection().catch(() => {});
+    setActiveProtection(null);
+    const id = await ensureSessionId().catch(() => '');
+    if (id) void sendTelemetry({ event: 'protection_removed', sessionId: id }).catch(() => {});
+  }
+
+  const currentCandidateSaved = Boolean(
+    activeProtection && protectionDraft?.eligible &&
+    activeProtection.title === protectionDraft.title &&
+    activeProtection.provider === protectionDraft.provider &&
+    activeProtection.nextAction === protectionDraft.nextAction &&
+    activeProtection.deadline === protectionDraft.deadline,
+  );
+
   const ctaLabel = !canSubmit
     ? 'Mesaj, link veya ekran görüntüsü ekle'
     : isSharedPrefill
@@ -197,6 +267,19 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
             <Text style={styles.brandSub}>Dijital risk kontrolü</Text>
           </View>
         </View>
+
+        {activeProtection && !result && (
+          <View style={styles.protectionCard}>
+            <Text style={styles.protectionKicker}>KORUMA AKTİF</Text>
+            <Text style={styles.protectionTitle}>{activeProtection.title || 'Korunan taahhüt'}</Text>
+            {!!activeProtection.provider && <Text style={styles.protectionText}>Sağlayıcı: {activeProtection.provider}</Text>}
+            {!!activeProtection.deadline && <Text style={styles.protectionText}>Kritik tarih: {activeProtection.deadline}</Text>}
+            <Text style={styles.protectionText}>Sıradaki aksiyon: {activeProtection.nextAction}</Text>
+            <Pressable onPress={removeActiveProtection} style={styles.protectionRemove}>
+              <Text style={styles.protectionRemoveText}>Koruma kaydını kaldır</Text>
+            </Pressable>
+          </View>
+        )}
 
         {!result && (
           <>
@@ -285,6 +368,27 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
 
         {result && <ResultCard result={result} analysisType={analysisType} sessionId={sessionId} onReset={reset} />}
 
+        {protectionDraft?.eligible && (
+          <View style={styles.protectionCard}>
+            <Text style={styles.protectionKicker}>KORUMA ADAYI</Text>
+            <Text style={styles.protectionText}>Kaydetmeden önce alanları kontrol edip düzeltebilirsin.</Text>
+            <Text style={styles.protectionFieldLabel}>Başlık</Text>
+            <TextInput value={protectionDraft.title} onChangeText={(title) => setProtectionDraft(d => d ? { ...d, title } : d)} style={styles.protectionInput} />
+            <Text style={styles.protectionFieldLabel}>Sağlayıcı</Text>
+            <TextInput value={protectionDraft.provider} onChangeText={(provider) => setProtectionDraft(d => d ? { ...d, provider } : d)} style={styles.protectionInput} />
+            <Text style={styles.protectionFieldLabel}>Kritik tarih (opsiyonel)</Text>
+            <TextInput value={protectionDraft.deadline} onChangeText={(deadline) => setProtectionDraft(d => d ? { ...d, deadline } : d)} placeholder="YYYY-AA-GG" placeholderTextColor="#69857C" autoCapitalize="none" style={styles.protectionInput} />
+            <Text style={styles.protectionFieldLabel}>Sıradaki aksiyon</Text>
+            <TextInput value={protectionDraft.nextAction} onChangeText={(nextAction) => setProtectionDraft(d => d ? { ...d, nextAction } : d)} multiline style={[styles.protectionInput, styles.protectionInputMultiline]} />
+            <Text style={styles.protectionText}>{protectionDraft.summary}</Text>
+            <Text style={styles.protectionText}>Yalnız bu yapılandırılmış özet cihazında saklanır; gönderdiğin ham içerik kaydedilmez.</Text>
+            <Pressable onPress={saveCurrentProtection} disabled={protectionSaving || currentCandidateSaved} style={[styles.cta, (protectionSaving || currentCandidateSaved) && styles.ctaDisabled]}>
+              {protectionSaving ? <ActivityIndicator color="#E9FFF6" /> : <Text style={styles.ctaText}>{currentCandidateSaved ? 'Koruma aktif' : activeProtection ? 'Aktif korumayı bununla değiştir' : 'Korumaya al'}</Text>}
+            </Pressable>
+            {!!protectionError && <Text style={styles.error}>{protectionError}</Text>}
+          </View>
+        )}
+
         <View style={styles.footerBranding}>
           <Text style={styles.footer}>
             Göndermeden. Ödemeden. Tıklamadan önce.
@@ -363,6 +467,17 @@ const styles = StyleSheet.create({
     color: '#F6FFF9',
     fontWeight: '900',
   },
+  protectionCard: {
+    backgroundColor: '#0B2A22', borderWidth: 1, borderColor: '#2D6B57', borderRadius: 18, padding: 16, gap: 8,
+  },
+  protectionKicker: { color: '#69D4A5', fontSize: 11, fontWeight: '900', letterSpacing: 1 },
+  protectionTitle: { color: '#F4FFF9', fontSize: 18, fontWeight: '900' },
+  protectionText: { color: '#C7DDD5', fontSize: 13, lineHeight: 19 },
+  protectionFieldLabel: { color: '#8FB5A7', fontSize: 11, fontWeight: '800', marginTop: 4 },
+  protectionInput: { backgroundColor: '#071F19', borderWidth: 1, borderColor: '#315F51', borderRadius: 11, color: '#F4FFF9', paddingHorizontal: 12, paddingVertical: 10, fontSize: 13 },
+  protectionInputMultiline: { minHeight: 76, textAlignVertical: 'top' },
+  protectionRemove: { alignSelf: 'flex-start', borderWidth: 1, borderColor: '#477B6B', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, marginTop: 3 },
+  protectionRemoveText: { color: '#DDF5EB', fontSize: 12, fontWeight: '800' },
   upload: {
     minHeight: 190,
     borderWidth: 1,
