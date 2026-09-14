@@ -65,3 +65,22 @@ create index if not exists economic_events_created_at_idx on public.economic_eve
 create index if not exists economic_events_success_idx on public.economic_events (success);
 
 comment on table public.economic_events is 'GüvenCheck Phase 0 AI economic telemetry. Stores usage/cost metadata only; analyzed content is never stored.';
+
+-- M3.2 privacy-minimal reusable link analysis cache. Raw URLs/content are not stored.
+create table if not exists public.analysis_reuse (
+  fingerprint text not null,
+  contract_version text not null,
+  source_request_id text not null,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null,
+  risk_level text not null check (risk_level in ('low','medium','high')),
+  result_json jsonb not null,
+  primary key (fingerprint, contract_version)
+);
+
+alter table public.analysis_reuse enable row level security;
+revoke all on table public.analysis_reuse from anon, authenticated;
+grant all on table public.analysis_reuse to service_role;
+
+create index if not exists analysis_reuse_expires_at_idx on public.analysis_reuse (expires_at);
+comment on table public.analysis_reuse is 'GüvenCheck M3.2 link reuse cache. HMAC fingerprint only; no raw URL, message, image or user identity.';

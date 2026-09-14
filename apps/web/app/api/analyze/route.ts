@@ -6,6 +6,8 @@ import { MANIPULATION_TACTICS, sanitizeManipulationTactics } from "../../../lib/
 import { sanitizeProtectionCandidate } from "../../../lib/commitment-protection";
 import { linkEscalationReasons } from "../../../lib/link-routing";
 import { deriveOfficialSafePath } from "../../../lib/official-safe-path";
+import { lookupCuratedIntelligence } from "../../../lib/verified-intelligence";
+import { lookupReusableLink, storeReusableLink } from "../../../lib/analysis-reuse-store";
 
 export const runtime = "nodejs";
 
@@ -553,10 +555,6 @@ export async function POST(req: NextRequest) {
     if (hasImage && body.imageData!.length > MAX_IMAGE_DATA_LENGTH) return jsonNoStore({ error: "Ekran görüntüsü işlendikten sonra hâlâ çok büyük." }, { status: 413, headers: rateHeaders });
     if (!hasImage && text.length < 3) return jsonNoStore({ error: "Analiz edilecek içerik bulunamadı." }, { status: 400, headers: rateHeaders });
 
-    if (!aiAnalysisEnabled()) {
-      return jsonNoStore({ error: "Analiz hizmeti şu anda geçici olarak kullanılamıyor. Lütfen daha sonra yeniden dene.", requestId }, { status: 503, headers: rateHeaders });
-    }
-
     const apiKey = process.env.OPENAI_API_KEY;
     const shadowInput = { type: body.type, content: text, imageData: body.imageData };
     const productResponse = async (result: any) => {
@@ -569,6 +567,35 @@ export async function POST(req: NextRequest) {
         { headers: rateHeaders },
       );
     };
+
+    if (!body.benchmarkModel && body.type === "link") {
+      const curated = lookupCuratedIntelligence(text);
+      if (curated) {
+        await persistEconomicEvent({
+          analysis_request_id: requestId, analysis_type: "link", provider: "internal",
+          model: null, model_route: "curated-intelligence", input_tokens: 0, cached_input_tokens: 0,
+          output_tokens: 0, total_tokens: 0, web_search_calls: 0, estimated_cost_usd: 0,
+          latency_ms: Date.now() - startedAt, success: true, error_class: null
+        });
+        return productResponse({ ...curated.result, mode: "curated", requestId, meta: { route: "curated-intelligence", estimatedCostUsd: 0, intelligenceId: curated.id } });
+      }
+
+      const reused = await lookupReusableLink(text);
+      if (reused) {
+        await persistEconomicEvent({
+          analysis_request_id: requestId, analysis_type: "link", provider: "internal",
+          model: null, model_route: "link-reuse", input_tokens: 0, cached_input_tokens: 0,
+          output_tokens: 0, total_tokens: 0, web_search_calls: 0, estimated_cost_usd: 0,
+          latency_ms: Date.now() - startedAt, success: true, error_class: null
+        });
+        return productResponse({ ...reused.result_json, mode: "reuse", requestId, meta: { route: "link-reuse", estimatedCostUsd: 0, sourceRequestId: reused.source_request_id } });
+      }
+    }
+
+    if (!aiAnalysisEnabled()) {
+      return jsonNoStore({ error: "Analiz hizmeti şu anda geçici olarak kullanılamıyor. Lütfen daha sonra yeniden dene.", requestId }, { status: 503, headers: rateHeaders });
+    }
+
     if (!apiKey) return productResponse(demoAnalyze(text || "ekran görüntüsü"));
 
     const economicGate = await checkEconomicGate();
@@ -658,14 +685,18 @@ export async function POST(req: NextRequest) {
     };
     console.info("GUVENCHECK_USAGE", JSON.stringify({ requestId, type: body.type, ...meta }));
     await persistSuccessfulEconomicUsage(requestId, body.type, meta);
-    return productResponse({
+    const productResult = {
       ...finalRun.analysis,
       sources: finalRun.sources,
       mode: "ai",
       webVerified: finalRun.webSearchCalls > 0,
       meta,
       requestId
-    });
+    };
+    if (body.type === "link" && !body.benchmarkModel) {
+      await storeReusableLink(text, productResult, requestId);
+    }
+    return productResponse(productResult);
   } catch (error) {
     const errorClass = error instanceof Error ? error.message : "UNKNOWN_ERROR";
     if (paidAiStarted && analysisType) {
