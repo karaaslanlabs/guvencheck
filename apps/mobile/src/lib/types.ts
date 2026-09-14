@@ -18,6 +18,7 @@ export type ProtectionObject = ProtectionCandidate & {
 };
 
 export type AnalysisResult = {
+  requestId?: string;
   score: number;
   level: RiskLevel;
   summary: string;

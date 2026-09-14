@@ -317,7 +317,7 @@ export default function Home() {
   useEffect(() => {
     setDeepVerificationInterested(false);
     if (!analysis || !deepVerification.eligible || !sessionId) return;
-    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "deep_verification_eligible", sessionId, analysisType: imageData ? "image" : normalizeUrl(value) ? "link" : "text" }) }).catch(() => undefined);
+    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "deep_verification_eligible", sessionId, analysisType: imageData ? "image" : normalizeUrl(value) ? "link" : "text", requestId: analysis.requestId }) }).catch(() => undefined);
   }, [analysis?.requestId, analysis?.score, deepVerification.eligible, sessionId]);
 
   const normalizedLink = normalizeUrl(value);
@@ -440,11 +440,11 @@ export default function Home() {
   function markDeepVerificationInterest() {
     if (deepVerificationInterested || !deepVerification.eligible) return;
     setDeepVerificationInterested(true);
-    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "deep_verification_interest", sessionId, analysisType }) }).catch(() => undefined);
+    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "deep_verification_interest", sessionId, analysisType, requestId: analysis?.requestId }) }).catch(() => undefined);
   }
 
   function recordRevenueEvidence(event: "payer_role" | "payment_interest", value: "self" | "family" | "work" | "yes" | "maybe" | "no") {
-    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event, value, sessionId, analysisType }) }).catch(() => undefined);
+    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event, value, sessionId, analysisType, requestId: analysis?.requestId }) }).catch(() => undefined);
   }
 
   async function sendFeedback(helpful: boolean, reason = helpful ? "dogru" : "diger") {
@@ -460,7 +460,7 @@ export default function Home() {
         })
       });
       setFeedbackState("sent");
-      if (helpful) void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "core_decision_value", sessionId, analysisType }) }).catch(() => undefined);
+      if (helpful) void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "core_decision_value", sessionId, analysisType, requestId: analysis?.requestId }) }).catch(() => undefined);
     } catch {
       setFeedbackState("idle");
     }
@@ -477,7 +477,7 @@ export default function Home() {
   async function shareResult() {
     if (!analysis) return;
     void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "share_clicked", sessionId, analysisType, score: analysis.score, level: analysis.level }) }).catch(() => undefined);
-    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "trusted_helper_share", sessionId, analysisType }) }).catch(() => undefined);
+    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "trusted_helper_share", sessionId, analysisType, requestId: analysis?.requestId }) }).catch(() => undefined);
     const appUrl = window.location.origin;
     const text = `GüvenCheck: ${levelText[analysis.level]}. ${analysis.actions[0] || analysis.summary} — Göndermeden. Ödemeden. Tıklamadan önce.\n\nSen de şüpheli bir içerik aldıysan kontrol et: ${appUrl}`;
     const card = await createShareCard(analysis, appUrl).catch(() => null);

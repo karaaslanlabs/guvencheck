@@ -129,7 +129,7 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
     setPayerRole('');
     setPaymentInterest('');
     if (!result || !deepVerification.eligible) return;
-    void ensureSessionId().then(id => sendTelemetry({ event: 'deep_verification_eligible', sessionId: id, analysisType })).catch(() => {});
+    void ensureSessionId().then(id => sendTelemetry({ event: 'deep_verification_eligible', sessionId: id, analysisType, requestId: result?.requestId })).catch(() => {});
   }, [result, deepVerification.eligible]);
 
   async function pickImage() {
@@ -285,12 +285,12 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
     if (deepVerificationInterested || !deepVerification.eligible) return;
     setDeepVerificationInterested(true);
     const id = await ensureSessionId().catch(() => '');
-    if (id) void sendTelemetry({ event: 'deep_verification_interest', sessionId: id, analysisType }).catch(() => {});
+    if (id) void sendTelemetry({ event: 'deep_verification_interest', sessionId: id, analysisType, requestId: result?.requestId }).catch(() => {});
   }
 
   async function recordRevenueEvidence(event: 'payer_role' | 'payment_interest', value: 'self' | 'family' | 'work' | 'yes' | 'maybe' | 'no') {
     const id = await ensureSessionId().catch(() => '');
-    if (id) void sendTelemetry({ event, value, sessionId: id, analysisType }).catch(() => {});
+    if (id) void sendTelemetry({ event, value, sessionId: id, analysisType, requestId: result?.requestId }).catch(() => {});
   }
 
   const ctaLabel = !canSubmit

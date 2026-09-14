@@ -113,7 +113,7 @@ export function ResultCard({
       });
       setFeedback(helpful ? 'yes' : 'no');
       setShowNegativeReasons(false);
-      if (helpful) void sendTelemetry({ event: 'core_decision_value', sessionId, analysisType }).catch(() => {});
+      if (helpful) void sendTelemetry({ event: 'core_decision_value', sessionId, analysisType, requestId: result.requestId }).catch(() => {});
     } catch (error) {
       setFeedbackError(
         error instanceof Error
@@ -143,7 +143,7 @@ export function ResultCard({
       route: typeof meta?.route === 'string' ? meta.route : undefined,
     }).catch(() => {});
 
-    void sendTelemetry({ event: 'trusted_helper_share', sessionId, analysisType }).catch(() => {});
+    void sendTelemetry({ event: 'trusted_helper_share', sessionId, analysisType, requestId: result.requestId }).catch(() => {});
 
     try {
       const available = await Sharing.isAvailableAsync();

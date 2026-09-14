@@ -19,3 +19,9 @@ export function sanitizeRevenueEvidence(event: string, value: unknown): string |
   }
   return undefined;
 }
+
+export function sanitizeAnalysisRequestId(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return /^[A-Za-z0-9_-]{4,64}$/.test(trimmed) ? trimmed : undefined;
+}

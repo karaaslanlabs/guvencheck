@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { analyticsConfigured, insertBetaEvent } from "../../../lib/supabase-rest";
-import { sanitizeRevenueEvidence } from "../../../lib/revenue-evidence";
+import { sanitizeAnalysisRequestId, sanitizeRevenueEvidence } from "../../../lib/revenue-evidence";
 
 export const runtime = "nodejs";
 
@@ -21,6 +21,7 @@ export async function POST(req: NextRequest) {
       route: typeof body.route === "string" ? body.route.slice(0,120) : undefined,
       latencyMs: typeof body.latencyMs === "number" ? Math.max(0,Math.round(body.latencyMs)) : undefined,
       eventValue,
+      analysisRequestId: sanitizeAnalysisRequestId(body.requestId),
       at: new Date().toISOString()
     };
 
@@ -36,7 +37,8 @@ export async function POST(req: NextRequest) {
           risk_level: event.level,
           model_route: event.route,
           latency_ms: event.latencyMs,
-          event_value: event.eventValue
+          event_value: event.eventValue,
+          analysis_request_id: event.analysisRequestId
         });
       } catch (error) {
         console.error("GUVENCHECK_ANALYTICS_WRITE_ERROR", error instanceof Error ? error.message : String(error));

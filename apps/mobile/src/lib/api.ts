@@ -81,6 +81,7 @@ export type TelemetryInput = {
   level?: 'low' | 'medium' | 'high';
   route?: string;
   latencyMs?: number;
+  requestId?: string;
   value?: 'self' | 'family' | 'work' | 'yes' | 'maybe' | 'no';
 };
 
