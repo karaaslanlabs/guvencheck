@@ -20,7 +20,7 @@ Mevcut `beta_events` tablosu zaten varsa `supabase-decision-feedback-migration.s
 
 Mevcut production beta veritabanı için tam schema'yı tekrar çalıştırmak yerine `supabase-m3-2-evidence-migration.sql` kullanılır. Bu migration production'a yalnız ayrı Founder migration gate'inden sonra uygulanır.
 
-Mevcut `m3_2_evidence_activation` production'a uygulanmışsa, Protection funnel paydasını ölçen `protection_candidate_eligible` olayı için `supabase-m3-2-protection-eligibility-migration.sql` ayrıca Founder migration gate'inden geçirilir.
+Mevcut `m3_2_evidence_activation` production'a uygulanmışsa, bounded Protection evidence olayları (`protection_candidate_eligible` + `protection_action_due_view`) için `supabase-m3-2-protection-evidence-migration.sql` ayrıca Founder migration gate'inden geçirilir.
 
 Vercel production environment'a ayrıca güçlü ve rastgele bir `ANALYSIS_REUSE_SECRET` eklenir (en az 16 karakter; repo/sohbet/client koduna yazılmaz). Deploy sonrası `/api/health` içinde `reuseConfigured: true` doğrulanır.
 

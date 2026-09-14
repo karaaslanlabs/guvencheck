@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getProtectionTiming } from "../lib/protection-status.ts";
+import { getProtectionTiming, isProtectionActionDue } from "../lib/protection-status.ts";
 
 const now = new Date("2026-09-14T12:00:00Z");
 
@@ -16,4 +16,11 @@ test("invalid dates do not create a countdown", () => {
   const result = getProtectionTiming("2026-02-31", now);
   assert.equal(result.state, "none");
   assert.equal(result.daysUntil, undefined);
+});
+
+test("identifies actionable protection timing states", () => {
+  assert.equal(isProtectionActionDue(getProtectionTiming("2026-09-14", now)), true);
+  assert.equal(isProtectionActionDue(getProtectionTiming("2026-09-18", now)), true);
+  assert.equal(isProtectionActionDue(getProtectionTiming("2026-10-01", now)), false);
+  assert.equal(isProtectionActionDue(getProtectionTiming("", now)), false);
 });

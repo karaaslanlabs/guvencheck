@@ -3,7 +3,7 @@
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { MANIPULATION_LABELS, type ManipulationTactic } from "../lib/manipulation-lens";
 import { sanitizeProtectionCandidate, type ProtectionCandidate, type ProtectionObject } from "../lib/commitment-protection";
-import { getProtectionTiming } from "../lib/protection-status";
+import { getProtectionTiming, isProtectionActionDue } from "../lib/protection-status";
 import { deriveDeepVerification } from "../lib/deep-verification";
 import { getProtectionBooster } from "../lib/protection-booster";
 
@@ -289,16 +289,16 @@ export default function Home() {
       const parsed = JSON.parse(raw) as Partial<ProtectionObject>;
       const candidate = sanitizeProtectionCandidate(parsed);
       if (!candidate.eligible || !parsed.id || !parsed.savedAt) throw new Error("invalid protection");
-      setActiveProtection({ ...candidate, id: String(parsed.id), savedAt: String(parsed.savedAt) });
+      setActiveProtection({ ...candidate, id: String(parsed.id), savedAt: String(parsed.savedAt), sourceRequestId: typeof parsed.sourceRequestId === "string" ? parsed.sourceRequestId : undefined });
     } catch {
       window.localStorage.removeItem("guvencheck_active_protection");
     }
   }, []);
 
   useEffect(() => {
-    if (!sessionId || !activeProtection) return;
-    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "protection_status_view", sessionId }) }).catch(() => undefined);
-  }, [sessionId, activeProtection?.id]);
+    if (!sessionId || !activeProtection || analysis) return;
+    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "protection_status_view", sessionId, requestId: activeProtection.sourceRequestId }) }).catch(() => undefined);
+  }, [sessionId, activeProtection?.id, analysis?.requestId]);
 
   useEffect(() => {
     const candidate = analysis?.protectionCandidate;
@@ -415,7 +415,7 @@ export default function Home() {
       return;
     }
     void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "protection_save_intent", sessionId, analysisType, requestId: analysis?.requestId }) }).catch(() => undefined);
-    const object: ProtectionObject = { ...candidate, id: crypto.randomUUID(), savedAt: new Date().toISOString() };
+    const object: ProtectionObject = { ...candidate, id: crypto.randomUUID(), savedAt: new Date().toISOString(), sourceRequestId: analysis?.requestId };
     window.localStorage.setItem("guvencheck_active_protection", JSON.stringify(object));
     if (activeProtection) void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "repeat_protection", sessionId, analysisType, requestId: analysis?.requestId }) }).catch(() => undefined);
     setActiveProtection(object);
@@ -438,10 +438,15 @@ export default function Home() {
     [activeProtection?.deadline],
   );
 
+  useEffect(() => {
+    if (!sessionId || !activeProtection || analysis || !isProtectionActionDue(activeProtectionTiming)) return;
+    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "protection_action_due_view", sessionId, requestId: activeProtection.sourceRequestId }) }).catch(() => undefined);
+  }, [sessionId, activeProtection?.id, activeProtection?.sourceRequestId, activeProtectionTiming?.state, analysis?.requestId]);
+
   function markProtectionUseful() {
     if (protectionUsefulSent || !activeProtection) return;
     setProtectionUsefulSent(true);
-    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "protection_event_useful", sessionId }) }).catch(() => undefined);
+    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "protection_event_useful", sessionId, requestId: activeProtection.sourceRequestId }) }).catch(() => undefined);
   }
 
   function markDeepVerificationInterest() {
@@ -528,7 +533,7 @@ export default function Home() {
           {activeProtection.deadline && <p><strong>Kritik tarih:</strong> {activeProtection.deadline}</p>}
           {activeProtectionTiming && <p className="protectionTiming"><strong>{activeProtectionTiming.label}</strong></p>}
           <p><strong>Sıradaki aksiyon:</strong> {activeProtection.nextAction}</p>
-          {activeProtectionTiming && ["today", "soon", "overdue"].includes(activeProtectionTiming.state) && (
+          {isProtectionActionDue(activeProtectionTiming) && (
             <button type="button" className="secondary protectionUseful" disabled={protectionUsefulSent} onClick={markProtectionUseful}>{protectionUsefulSent ? "Geri bildirim alındı" : "Bu hatırlatma işime yaradı"}</button>
           )}
           <button type="button" className="secondary" onClick={removeProtection}>Koruma kaydını kaldır</button>

@@ -22,6 +22,7 @@ export type ProtectionCandidate = {
 export type ProtectionObject = ProtectionCandidate & {
   id: string;
   savedAt: string;
+  sourceRequestId?: string;
 };
 
 function cleanText(value: unknown, max: number) {

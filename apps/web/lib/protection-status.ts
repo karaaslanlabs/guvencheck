@@ -30,3 +30,7 @@ export function getProtectionTiming(deadline: string, now = new Date()): Protect
   if (daysUntil <= 7) return { state: "soon", label: `${daysUntil} gün kaldı`, daysUntil };
   return { state: "future", label: `${daysUntil} gün kaldı`, daysUntil };
 }
+
+export function isProtectionActionDue(timing: ProtectionTiming | null | undefined) {
+  return timing?.state === "soon" || timing?.state === "today" || timing?.state === "overdue";
+}
