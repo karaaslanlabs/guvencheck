@@ -372,7 +372,7 @@ export default function Home() {
       setAnalysis(data);
       void fetch("/api/telemetry", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ event: "analysis_completed", sessionId, analysisType, score: data.score, level: data.level, route: data.meta?.route, latencyMs: data.meta?.latencyMs })
+        body: JSON.stringify({ event: "analysis_completed", sessionId, analysisType, score: data.score, level: data.level, route: data.meta?.route, latencyMs: data.meta?.latencyMs, requestId: data.requestId })
       }).catch(() => undefined);
       if (data.protectionCandidate?.eligible === true) {
         void fetch("/api/telemetry", {
@@ -414,15 +414,15 @@ export default function Home() {
       setProtectionMessage("Koruma için başlık/aksiyon/özet bilgilerini kontrol et.");
       return;
     }
-    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "protection_save_intent", sessionId, analysisType }) }).catch(() => undefined);
+    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "protection_save_intent", sessionId, analysisType, requestId: analysis?.requestId }) }).catch(() => undefined);
     const object: ProtectionObject = { ...candidate, id: crypto.randomUUID(), savedAt: new Date().toISOString() };
     window.localStorage.setItem("guvencheck_active_protection", JSON.stringify(object));
-    if (activeProtection) void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "repeat_protection", sessionId, analysisType }) }).catch(() => undefined);
+    if (activeProtection) void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "repeat_protection", sessionId, analysisType, requestId: analysis?.requestId }) }).catch(() => undefined);
     setActiveProtection(object);
     setProtectionDraft({ ...object });
     setProtectionUsefulSent(false);
     setProtectionMessage("Koruma aktif. Kritik aksiyonunu burada takip edebilirsin.");
-    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "protection_saved", sessionId, analysisType }) }).catch(() => undefined);
+    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "protection_saved", sessionId, analysisType, requestId: analysis?.requestId }) }).catch(() => undefined);
   }
 
   function removeProtection() {
