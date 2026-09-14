@@ -21,6 +21,7 @@ export type AnalysisReuseRow = {
   created_at?: string;
   expires_at: string;
   risk_level: "low" | "medium" | "high";
+  source_estimated_cost_usd?: number | null;
   result_json: Record<string, unknown>;
 };
 
@@ -93,7 +94,7 @@ export async function readAnalysisReuse(fingerprint: string, contractVersion: st
   const fp = encodeURIComponent(fingerprint);
   const cv = encodeURIComponent(contractVersion);
   const now = encodeURIComponent(new Date().toISOString());
-  const fields = "fingerprint,contract_version,source_request_id,created_at,expires_at,risk_level,result_json";
+  const fields = "fingerprint,contract_version,source_request_id,created_at,expires_at,risk_level,source_estimated_cost_usd,result_json";
   const res = await supabaseFetch(`analysis_reuse?select=${fields}&fingerprint=eq.${fp}&contract_version=eq.${cv}&expires_at=gt.${now}&limit=1`);
   if (!res.ok) throw new Error(`Analysis reuse select failed (${res.status})`);
   const rows = (await res.json()) as AnalysisReuseRow[];

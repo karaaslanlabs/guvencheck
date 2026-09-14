@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ANALYSIS_CONTRACT_VERSION, canonicalizeLinkForReuse, createReuseFingerprint, linkReuseTtlMs, prepareResultForReuse } from '../lib/analysis-reuse.ts';
+import { ANALYSIS_CONTRACT_VERSION, canonicalizeLinkForReuse, createReuseFingerprint, directionalAvoidedCost, linkReuseTtlMs, prepareResultForReuse, reuseAgeSeconds } from '../lib/analysis-reuse.ts';
 
 test('canonicalizes tracking-only link variants to the same value', () => {
   assert.equal(
@@ -16,6 +16,7 @@ test('fingerprint is secret-bound and contract-version-bound', () => {
   assert.notEqual(first, second);
   assert.ok(ANALYSIS_CONTRACT_VERSION.startsWith('m3.2-'));
 });
+
 test('does not reuse unverified low-risk results', () => {
   assert.equal(linkReuseTtlMs({ level: 'low', webVerified: false }), 0);
   assert.equal(linkReuseTtlMs({ level: 'low', webVerified: true }), 60 * 60 * 1000);
@@ -28,4 +29,18 @@ test('scrubs request metadata and extracted target URLs before persistence', () 
   assert.equal(reusable.meta, undefined);
   assert.equal(reusable.extractedUrls, undefined);
   assert.equal(reusable.score, 80);
+});
+
+test('computes bounded reuse age', () => {
+  const now = Date.parse('2026-09-14T12:00:00Z');
+  assert.equal(reuseAgeSeconds('2026-09-14T11:00:00Z', now), 3600);
+  assert.equal(reuseAgeSeconds('2026-09-14T13:00:00Z', now), null);
+  assert.equal(reuseAgeSeconds('not-a-date', now), null);
+});
+
+test('keeps only bounded directional avoided cost', () => {
+  assert.equal(directionalAvoidedCost(0.1234567), 0.123457);
+  assert.equal(directionalAvoidedCost(-1), null);
+  assert.equal(directionalAvoidedCost(101), null);
+  assert.equal(directionalAvoidedCost('bad'), null);
 });

@@ -49,3 +49,15 @@ export function prepareResultForReuse(result: any) {
   delete copy.extractedUrls;
   return copy;
 }
+
+export function reuseAgeSeconds(createdAt: string | undefined, nowMs = Date.now()) {
+  if (!createdAt) return null;
+  const created = new Date(createdAt);
+  if (Number.isNaN(created.getTime()) || created.getTime() > nowMs) return null;
+  return Math.max(0, Math.round((nowMs - created.getTime()) / 1000));
+}
+
+export function directionalAvoidedCost(value: unknown) {
+  const cost = Number(value);
+  return Number.isFinite(cost) && cost >= 0 && cost <= 100 ? Number(cost.toFixed(6)) : null;
+}

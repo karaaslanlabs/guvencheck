@@ -7,7 +7,7 @@ import { sanitizeProtectionCandidate } from "../../../lib/commitment-protection"
 import { linkEscalationReasons } from "../../../lib/link-routing";
 import { deriveOfficialSafePath } from "../../../lib/official-safe-path";
 import { lookupCuratedIntelligence } from "../../../lib/verified-intelligence";
-import { lookupReusableLink, storeReusableLink } from "../../../lib/analysis-reuse-store";
+import { lookupReusableLink, recordCuratedHit, recordReuseHit, recordReuseMiss, storeReusableLink } from "../../../lib/analysis-reuse-store";
 
 export const runtime = "nodejs";
 
@@ -571,6 +571,7 @@ export async function POST(req: NextRequest) {
     if (!body.benchmarkModel && body.type === "link") {
       const curated = lookupCuratedIntelligence(text);
       if (curated) {
+        await recordCuratedHit(requestId, curated.id, curated.verifiedAt);
         await persistEconomicEvent({
           analysis_request_id: requestId, analysis_type: "link", provider: "internal",
           model: null, model_route: "curated-intelligence", input_tokens: 0, cached_input_tokens: 0,
@@ -582,6 +583,7 @@ export async function POST(req: NextRequest) {
 
       const reused = await lookupReusableLink(text);
       if (reused) {
+        await recordReuseHit(requestId, reused);
         await persistEconomicEvent({
           analysis_request_id: requestId, analysis_type: "link", provider: "internal",
           model: null, model_route: "link-reuse", input_tokens: 0, cached_input_tokens: 0,
@@ -590,6 +592,7 @@ export async function POST(req: NextRequest) {
         });
         return productResponse({ ...reused.result_json, mode: "reuse", requestId, meta: { route: "link-reuse", estimatedCostUsd: 0, sourceRequestId: reused.source_request_id } });
       }
+      await recordReuseMiss(requestId);
     }
 
     if (!aiAnalysisEnabled()) {
