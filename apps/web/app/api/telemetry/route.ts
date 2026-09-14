@@ -3,7 +3,7 @@ import { analyticsConfigured, insertBetaEvent } from "../../../lib/supabase-rest
 
 export const runtime = "nodejs";
 
-const allowedEvents = new Set(["page_view","analysis_started","analysis_completed","analysis_error","share_clicked","privacy_view","protection_save_intent","protection_saved","protection_removed","protection_status_view","protection_event_useful","repeat_protection"]);
+const allowedEvents = new Set(["page_view","analysis_started","analysis_completed","analysis_error","share_clicked","privacy_view","protection_save_intent","protection_saved","protection_removed","protection_status_view","protection_event_useful","repeat_protection","deep_verification_eligible","deep_verification_interest"]);
 
 export async function POST(req: NextRequest) {
   try {

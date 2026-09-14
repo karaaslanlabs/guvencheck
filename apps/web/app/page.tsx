@@ -4,6 +4,7 @@ import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { MANIPULATION_LABELS, type ManipulationTactic } from "../lib/manipulation-lens";
 import { sanitizeProtectionCandidate, type ProtectionCandidate, type ProtectionObject } from "../lib/commitment-protection";
 import { getProtectionTiming } from "../lib/protection-status";
+import { deriveDeepVerification } from "../lib/deep-verification";
 
 type RiskLevel = "low" | "medium" | "high";
 type Analysis = {
@@ -253,6 +254,7 @@ export default function Home() {
   const [protectionMessage, setProtectionMessage] = useState("");
   const [protectionDraft, setProtectionDraft] = useState<ProtectionCandidate | null>(null);
   const [protectionUsefulSent, setProtectionUsefulSent] = useState(false);
+  const [deepVerificationInterested, setDeepVerificationInterested] = useState(false);
 
   useEffect(() => {
     const standalone = window.matchMedia?.("(display-mode: standalone)").matches || Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
@@ -299,6 +301,17 @@ export default function Home() {
     setProtectionDraft(candidate?.eligible ? { ...candidate } : null);
     setProtectionMessage("");
   }, [analysis]);
+
+  const deepVerification = useMemo(
+    () => analysis ? deriveDeepVerification(analysis) : { eligible: false, reason: "" },
+    [analysis],
+  );
+
+  useEffect(() => {
+    setDeepVerificationInterested(false);
+    if (!analysis || !deepVerification.eligible || !sessionId) return;
+    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "deep_verification_eligible", sessionId, analysisType: imageData ? "image" : normalizeUrl(value) ? "link" : "text" }) }).catch(() => undefined);
+  }, [analysis?.requestId, analysis?.score, deepVerification.eligible, sessionId]);
 
   const normalizedLink = normalizeUrl(value);
   const analysisType: "text" | "link" | "image" = imageData ? "image" : normalizedLink ? "link" : "text";
@@ -413,6 +426,12 @@ export default function Home() {
     if (protectionUsefulSent || !activeProtection) return;
     setProtectionUsefulSent(true);
     void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "protection_event_useful", sessionId }) }).catch(() => undefined);
+  }
+
+  function markDeepVerificationInterest() {
+    if (deepVerificationInterested || !deepVerification.eligible) return;
+    setDeepVerificationInterested(true);
+    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "deep_verification_interest", sessionId, analysisType }) }).catch(() => undefined);
   }
 
   async function sendFeedback(helpful: boolean, reason = helpful ? "dogru" : "diger") {
@@ -567,6 +586,15 @@ export default function Home() {
               <h3>Nasıl yönlendirilmeye çalışılıyor?</h3>
               {analysis.manipulationSummary && <p>{analysis.manipulationSummary}</p>}
               <ul>{analysis.manipulationTactics.map((tactic) => <li key={tactic}>{MANIPULATION_LABELS[tactic]}</li>)}</ul>
+            </div>
+          )}
+
+          {deepVerification.eligible && (
+            <div className="section decisionSupport">
+              <h3>Daha derin doğrulama anlamlı olabilir</h3>
+              <p>{deepVerification.reason}</p>
+              <p>Bu buton ödeme veya sipariş başlatmaz; yalnız bu tür vakalarda daha derin doğrulamaya ilgi olup olmadığını ölçer.</p>
+              <button type="button" className="secondary" disabled={deepVerificationInterested} onClick={markDeepVerificationInterest}>{deepVerificationInterested ? "İlgin kaydedildi" : "Daha derin doğrulamayla ilgileniyorum"}</button>
             </div>
           )}
 

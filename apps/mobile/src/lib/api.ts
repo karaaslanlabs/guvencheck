@@ -65,7 +65,9 @@ export type TelemetryEvent =
   | 'protection_removed'
   | 'protection_status_view'
   | 'protection_event_useful'
-  | 'repeat_protection';
+  | 'repeat_protection'
+  | 'deep_verification_eligible'
+  | 'deep_verification_interest';
 
 export type TelemetryInput = {
   event: TelemetryEvent;

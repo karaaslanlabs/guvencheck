@@ -18,6 +18,7 @@ import { looksLikeUrl, normalizeUrl } from '../lib/url';
 import { createSessionId, getInstallId } from '../lib/install-id';
 import { clearProtection, loadProtection, saveProtection } from '../lib/protection-store';
 import { getProtectionTiming } from '../lib/protection-status';
+import { deriveDeepVerification } from '../lib/deep-verification';
 import type { AnalysisResult, AnalysisType, ProtectionCandidate, ProtectionObject } from '../lib/types';
 import { ResultCard } from './ResultCard';
 import { Shield } from './Shield';
@@ -54,6 +55,7 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
   const [protectionError, setProtectionError] = useState('');
   const [protectionDraft, setProtectionDraft] = useState<ProtectionCandidate | null>(null);
   const [protectionUsefulSent, setProtectionUsefulSent] = useState(false);
+  const [deepVerificationInterested, setDeepVerificationInterested] = useState(false);
 
   async function ensureSessionId() {
     if (sessionIdRef.current) return sessionIdRef.current;
@@ -107,11 +109,24 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
 
   const isSharedPrefill = Boolean(prefill && (imageUri || value.trim()));
 
+  const deepVerification = useMemo(
+    () => result ? deriveDeepVerification(result) : { eligible: false, reason: '' },
+    [result],
+  );
+
+
+
   useEffect(() => {
     const candidate = result?.protectionCandidate;
     setProtectionDraft(candidate?.eligible ? { ...candidate } : null);
     setProtectionError('');
   }, [result]);
+
+  useEffect(() => {
+    setDeepVerificationInterested(false);
+    if (!result || !deepVerification.eligible) return;
+    void ensureSessionId().then(id => sendTelemetry({ event: 'deep_verification_eligible', sessionId: id, analysisType })).catch(() => {});
+  }, [result, deepVerification.eligible]);
 
   async function pickImage() {
     const res = await ImagePicker.launchImageLibraryAsync({
@@ -262,6 +277,13 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
     if (id) void sendTelemetry({ event: 'protection_event_useful', sessionId: id }).catch(() => {});
   }
 
+  async function markDeepVerificationInterest() {
+    if (deepVerificationInterested || !deepVerification.eligible) return;
+    setDeepVerificationInterested(true);
+    const id = await ensureSessionId().catch(() => '');
+    if (id) void sendTelemetry({ event: 'deep_verification_interest', sessionId: id, analysisType }).catch(() => {});
+  }
+
   const ctaLabel = !canSubmit
     ? 'Mesaj, link veya ekran görüntüsü ekle'
     : isSharedPrefill
@@ -390,6 +412,18 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
         )}
 
         {result && <ResultCard result={result} analysisType={analysisType} sessionId={sessionId} onReset={reset} />}
+
+        {deepVerification.eligible && (
+          <View style={styles.protectionCard}>
+            <Text style={styles.protectionKicker}>DAHA DERİN DOĞRULAMA</Text>
+            <Text style={styles.protectionTitle}>Bu vakada ek kanıtlar anlamlı olabilir</Text>
+            <Text style={styles.protectionText}>{deepVerification.reason}</Text>
+            <Text style={styles.protectionText}>Bu buton ödeme veya sipariş başlatmaz; yalnız ilgiyi ölçer.</Text>
+            <Pressable onPress={markDeepVerificationInterest} disabled={deepVerificationInterested} style={[styles.protectionUseful, deepVerificationInterested && styles.protectionUsefulDone]}>
+              <Text style={styles.protectionUsefulText}>{deepVerificationInterested ? 'İlgin kaydedildi' : 'Daha derin doğrulamayla ilgileniyorum'}</Text>
+            </Pressable>
+          </View>
+        )}
 
         {protectionDraft?.eligible && (
           <View style={styles.protectionCard}>
