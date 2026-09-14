@@ -5,6 +5,7 @@ import { MANIPULATION_LABELS, type ManipulationTactic } from "../lib/manipulatio
 import { sanitizeProtectionCandidate, type ProtectionCandidate, type ProtectionObject } from "../lib/commitment-protection";
 import { getProtectionTiming } from "../lib/protection-status";
 import { deriveDeepVerification } from "../lib/deep-verification";
+import { getProtectionBooster } from "../lib/protection-booster";
 
 type RiskLevel = "low" | "medium" | "high";
 type Analysis = {
@@ -306,6 +307,10 @@ export default function Home() {
     () => analysis ? deriveDeepVerification(analysis) : { eligible: false, reason: "" },
     [analysis],
   );
+  const protectionBooster = useMemo(
+    () => getProtectionBooster(analysis?.manipulationTactics),
+    [analysis?.manipulationTactics],
+  );
 
   useEffect(() => {
     setDeepVerificationInterested(false);
@@ -463,6 +468,7 @@ export default function Home() {
   async function shareResult() {
     if (!analysis) return;
     void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "share_clicked", sessionId, analysisType, score: analysis.score, level: analysis.level }) }).catch(() => undefined);
+    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "trusted_helper_share", sessionId, analysisType }) }).catch(() => undefined);
     const appUrl = window.location.origin;
     const text = `GüvenCheck: ${levelText[analysis.level]}. ${analysis.actions[0] || analysis.summary} — Göndermeden. Ödemeden. Tıklamadan önce.\n\nSen de şüpheli bir içerik aldıysan kontrol et: ${appUrl}`;
     const card = await createShareCard(analysis, appUrl).catch(() => null);
@@ -589,6 +595,14 @@ export default function Home() {
             </div>
           )}
 
+          {protectionBooster && (
+            <div className="section decisionSupport">
+              <h3>Bir dahaki sefere daha erken fark et</h3>
+              <p><strong>{protectionBooster.title}</strong></p>
+              <p>{protectionBooster.action}</p>
+            </div>
+          )}
+
           {deepVerification.eligible && (
             <div className="section decisionSupport">
               <h3>Daha derin doğrulama anlamlı olabilir</h3>
@@ -659,7 +673,7 @@ export default function Home() {
 
           <div className="buttonRow">
             <button className="secondary" onClick={reset}>Yeni kontrol</button>
-            <button className="primary share" onClick={shareResult}>{copied ? "Kopyalandı ✓" : "Aileme gönder"}</button>
+            <button className="primary share" onClick={shareResult}>{copied ? "Kopyalandı ✓" : "Güvendiğim birine gönder"}</button>
           </div>
         </section>
       )}
