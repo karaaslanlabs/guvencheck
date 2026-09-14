@@ -303,6 +303,15 @@ export function ResultCard({
         </View>
       )}
 
+      {result.manipulationTactics && result.manipulationTactics.length > 0 && (
+        <View style={styles.decisionSupport}>
+          <Text style={styles.decisionSupportTitle}>Nasıl yönlendirilmeye çalışılıyor?</Text>
+          <Text style={styles.decisionSupportText}>
+            {result.manipulationSummary || 'İçerikte kararını etkilemeye çalışan davranışsal yönlendirme sinyalleri var.'}
+          </Text>
+        </View>
+      )}
+
       <Text style={styles.section}>Neden böyle düşünüyoruz?</Text>
       {(result.signals || []).slice(0, 3).map((s, i) => (
         <Text key={i} style={styles.bullet}>

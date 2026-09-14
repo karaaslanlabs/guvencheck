@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { aiAnalysisEnabled, checkEconomicGate, persistEconomicEvent } from "../../../lib/economic-readiness";
 import { preserveProductResultWithShadow } from "../../../lib/agent-platform-shadow";
 import { withDecisionSupport } from "../../../lib/decision-support";
+import { MANIPULATION_TACTICS, sanitizeManipulationTactics } from "../../../lib/manipulation-lens";
 
 export const runtime = "nodejs";
 
@@ -55,6 +56,8 @@ const schema = {
     title: { type: "string" },
     summary: { type: "string" },
     signals: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 6 },
+    manipulationTactics: { type: "array", items: { type: "string", enum: [...MANIPULATION_TACTICS] }, maxItems: 4 },
+    manipulationSummary: { type: "string" },
     actions: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 5 },
     avoid: { type: "array", items: { type: "string" }, maxItems: 5 },
     confidence: { type: "string", enum: ["low", "medium", "high"] },
@@ -63,7 +66,7 @@ const schema = {
     verifiedFindings: { type: "array", items: { type: "string" }, maxItems: 5 },
     extractedUrls: { type: "array", items: { type: "string" }, maxItems: 3 }
   },
-  required: ["score", "level", "title", "summary", "signals", "actions", "avoid", "confidence", "verificationStatus", "verificationSummary", "verifiedFindings", "extractedUrls"]
+  required: ["score", "level", "title", "summary", "signals", "manipulationTactics", "manipulationSummary", "actions", "avoid", "confidence", "verificationStatus", "verificationSummary", "verifiedFindings", "extractedUrls"]
 };
 
 const SYSTEM_PROMPT = `Sen GüvenCheck adlı Türkiye odaklı dijital güven asistanının risk analiz motorusun.
@@ -87,6 +90,10 @@ Kurallar:
 - Görsel veya metin içinde açıkça görülen http/https bağlantılarını extractedUrls alanına aynen çıkar. Bağlantı yoksa boş dizi döndür. URL uydurma.
 - Yüksek riskte para göndermeme, linke tıklamama, OTP/şifre paylaşmama ve kurumu mesajdaki kanal yerine kendi resmî sitesi/uygulaması/numarasından doğrulama tavsiyesi ver.
 - Düşük risk sonucu bile içeriğin kesin güvenli olduğu anlamına gelmez.
+- Manipulation Lens için yalnız içerikte açıkça görülen davranışsal taktikleri işaretle; scam kararı yerine yönlendirme tekniğini açıkla.
+- manipulationTactics yalnız şu kimliklerden oluşabilir: urgency_time_pressure, authority_impersonation, scarcity_too_good_to_be_true, secrecy_isolation, emotional_leverage, trust_building_social_engineering, payment_channel_redirection.
+- Bir taktik için yeterli kanıt yoksa ekleme. Hiç taktik yoksa manipulationTactics=[] ve manipulationSummary="" döndür.
+- manipulationSummary en fazla 2 kısa cümle olsun; kullanıcıya nasıl baskı/yönlendirme uygulandığını sade Türkçeyle açıkla, niyet uydurma.
 - Kullanıcı için en kritik 3-5 sinyali öne çıkar; aynı şeyi farklı cümlelerle tekrarlama.`;
 
 function normalizeHttpUrl(value: string) {
@@ -179,6 +186,8 @@ function sanitizeAnalysis(parsed: any) {
     title: cleanModelText(parsed?.title).slice(0, 180),
     summary: cleanModelText(parsed?.summary).slice(0, 700),
     signals: Array.isArray(parsed?.signals) ? parsed.signals.map(cleanModelText).filter(Boolean).slice(0, 5) : [],
+    manipulationTactics: sanitizeManipulationTactics(parsed?.manipulationTactics),
+    manipulationSummary: cleanModelText(parsed?.manipulationSummary).slice(0, 420),
     actions: Array.isArray(parsed?.actions) ? parsed.actions.map(cleanModelText).filter(Boolean).slice(0, 5) : [],
     avoid: Array.isArray(parsed?.avoid) ? parsed.avoid.map(cleanModelText).filter(Boolean).slice(0, 4) : [],
     verificationSummary: cleanModelText(parsed?.verificationSummary).slice(0, 600),
@@ -202,6 +211,19 @@ function demoAnalyze(input: string) {
   const signals: string[] = patterns.filter(([regex]) => regex.test(text)).map(([, label]) => label);
   if (/https?:\/\//i.test(text)) signals.push("İçerik bir bağlantıya yönlendiriyor; alan adını bağımsız doğrulamak gerekir.");
 
+  const manipulationTactics = sanitizeManipulationTactics([
+    /(acil|hemen|son uyarı|son gün|askıya|kapatılacak|yasal işlem|haciz|ceza)/i.test(text) ? "urgency_time_pressure" : null,
+    /(polis|savcı|jandarma|banka|e-devlet|hgs|vergi|icra|ptt|kargo)/i.test(text) && /(acil|hemen|askıya|kapatılacak|otp|şifre|iban|havale|eft|kripto|ödeme|para gönder|https?:\/\/)/i.test(text) ? "authority_impersonation" : null,
+    /(hediye|kazandınız|çekiliş|bedava|garanti kazanç|yüksek getiri|risksiz kazanç|son stok|sadece bugün)/i.test(text) ? "scarcity_too_good_to_be_true" : null,
+    /(kimseye söyleme|gizli tut|aramayı kapatma|yalnız konuş|başkasına danışma)/i.test(text) ? "secrecy_isolation" : null,
+    /(korkut|tehdit|panik|ailen|çocuğun|yakının|yardım et|mağdur)/i.test(text) ? "emotional_leverage" : null,
+    /(güven bana|resmî temsilci|müşteri hizmetleri|uzmanım|sizin için|özel müşteri)/i.test(text) ? "trust_building_social_engineering" : null,
+    /(iban|havale|eft|kripto|usdt|btc|whatsapp|telegram|başka hesaba|farklı hesaba)/i.test(text) ? "payment_channel_redirection" : null,
+  ]);
+  const manipulationSummary = manipulationTactics.length
+    ? "İçerik, kararını hızlandırmak veya belirli bir kişi, kurum ya da ödeme kanalına yönlendirmek için davranışsal baskı sinyalleri taşıyor."
+    : "";
+
   let score = Math.min(96, 14 + signals.length * 14);
   if (signals.length === 0) score = 22;
   if (/(otp|doğrulama kodu|şifre|anydesk|teamviewer)/i.test(text) && /(para|ödeme|iban|banka)/i.test(text)) score = Math.max(score, 88);
@@ -213,6 +235,8 @@ function demoAnalyze(input: string) {
     title: level === "high" ? "Bu içerik güçlü risk sinyalleri taşıyor" : level === "medium" ? "Doğrulamadan işlem yapma" : "Belirgin risk sinyali az",
     summary: level === "high" ? "İçerikte sosyal mühendislik veya dolandırıcılıkla uyumlu birden fazla işaret bulundu." : level === "medium" ? "Kesin bir sonuca varmak için bağımsız doğrulama gerekiyor." : "Metinde belirgin bir dolandırıcılık kalıbı az görünüyor; bu sonuç içeriğin kesin güvenli olduğu anlamına gelmez.",
     signals: signals.length ? signals.slice(0, 6) : ["Demo taramasında belirgin aciliyet, para transferi veya şifre talebi kalıbı bulunmadı."],
+    manipulationTactics,
+    manipulationSummary,
     actions: ["Göndereni mesajdaki link veya numaradan değil, kurumun kendi resmî kanalından doğrula.", "Para veya hassas bilgi isteniyorsa işlem yapmadan önce ikinci bir doğrulama yap."],
     avoid: level === "high" ? ["Linke tıklama.", "Para gönderme.", "Şifre veya SMS doğrulama kodu paylaşma."] : ["Yalnızca bu skora bakarak güvenli kabul etme."],
     confidence: signals.length >= 3 ? "medium" : "low",

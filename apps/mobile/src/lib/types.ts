@@ -6,6 +6,8 @@ export type AnalysisResult = {
   level: RiskLevel;
   summary: string;
   signals: string[];
+  manipulationTactics?: string[];
+  manipulationSummary?: string;
   actions: string[];
   avoid: string[];
   confidence: 'low' | 'medium' | 'high';

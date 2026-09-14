@@ -1,6 +1,7 @@
 "use client";
 
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import { MANIPULATION_LABELS, type ManipulationTactic } from "../lib/manipulation-lens";
 
 type RiskLevel = "low" | "medium" | "high";
 type Analysis = {
@@ -10,6 +11,8 @@ type Analysis = {
   title: string;
   summary: string;
   signals: string[];
+  manipulationTactics?: ManipulationTactic[];
+  manipulationSummary?: string;
   actions: string[];
   avoid: string[];
   confidence: "low" | "medium" | "high";
@@ -461,6 +464,14 @@ export default function Home() {
               <p><strong>Belirsizlik: {uncertaintyText[analysis.decisionSupport.uncertainty]}</strong> — {analysis.decisionSupport.uncertaintySummary}</p>
               <p><strong>Karar etkisi:</strong> {analysis.decisionSupport.implication}</p>
               <p><strong>Güvenli sonraki adım:</strong> {analysis.decisionSupport.nextAction}</p>
+            </div>
+          )}
+
+          {analysis.manipulationTactics && analysis.manipulationTactics.length > 0 && (
+            <div className="section decisionSupport">
+              <h3>Nasıl yönlendirilmeye çalışılıyor?</h3>
+              {analysis.manipulationSummary && <p>{analysis.manipulationSummary}</p>}
+              <ul>{analysis.manipulationTactics.map((tactic) => <li key={tactic}>{MANIPULATION_LABELS[tactic]}</li>)}</ul>
             </div>
           )}
 
