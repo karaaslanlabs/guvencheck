@@ -646,3 +646,7 @@ footer a {
 .protectionField input,.protectionField textarea{width:100%;border:1px solid rgba(255,255,255,.12);border-radius:11px;background:rgba(0,0,0,.18);color:var(--text);padding:10px 11px;outline:none}
 .protectionField textarea{min-height:74px;padding-bottom:10px}
 .protectionField input:focus,.protectionField textarea:focus{border-color:rgba(99,230,166,.5);box-shadow:0 0 0 3px rgba(99,230,166,.08)}
+
+.protectionTiming{color:var(--accent);font-size:14px;margin:8px 0}
+.protectionUseful{margin-right:8px;margin-bottom:8px}
+.protectionUseful:disabled{opacity:.65;cursor:default}

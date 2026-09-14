@@ -63,7 +63,9 @@ export type TelemetryEvent =
   | 'protection_save_intent'
   | 'protection_saved'
   | 'protection_removed'
-  | 'protection_status_view';
+  | 'protection_status_view'
+  | 'protection_event_useful'
+  | 'repeat_protection';
 
 export type TelemetryInput = {
   event: TelemetryEvent;

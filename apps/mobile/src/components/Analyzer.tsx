@@ -17,6 +17,7 @@ import { uriToDataUrl } from '../lib/image';
 import { looksLikeUrl, normalizeUrl } from '../lib/url';
 import { createSessionId, getInstallId } from '../lib/install-id';
 import { clearProtection, loadProtection, saveProtection } from '../lib/protection-store';
+import { getProtectionTiming } from '../lib/protection-status';
 import type { AnalysisResult, AnalysisType, ProtectionCandidate, ProtectionObject } from '../lib/types';
 import { ResultCard } from './ResultCard';
 import { Shield } from './Shield';
@@ -52,6 +53,7 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
   const [protectionSaving, setProtectionSaving] = useState(false);
   const [protectionError, setProtectionError] = useState('');
   const [protectionDraft, setProtectionDraft] = useState<ProtectionCandidate | null>(null);
+  const [protectionUsefulSent, setProtectionUsefulSent] = useState(false);
 
   async function ensureSessionId() {
     if (sessionIdRef.current) return sessionIdRef.current;
@@ -220,8 +222,10 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
     if (id) void sendTelemetry({ event: 'protection_save_intent', sessionId: id, analysisType }).catch(() => {});
     try {
       const object = await saveProtection(protectionDraft);
+      if (activeProtection) void sendTelemetry({ event: 'repeat_protection', sessionId: id, analysisType }).catch(() => {});
       setActiveProtection(object);
       setProtectionDraft({ ...object });
+      setProtectionUsefulSent(false);
       if (id) void sendTelemetry({ event: 'protection_saved', sessionId: id, analysisType }).catch(() => {});
     } catch (error) {
       setProtectionError(error instanceof Error ? error.message : 'Koruma kaydı oluşturulamadı.');
@@ -233,6 +237,7 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
   async function removeActiveProtection() {
     await clearProtection().catch(() => {});
     setActiveProtection(null);
+    setProtectionUsefulSent(false);
     const id = await ensureSessionId().catch(() => '');
     if (id) void sendTelemetry({ event: 'protection_removed', sessionId: id }).catch(() => {});
   }
@@ -244,6 +249,18 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
     activeProtection.nextAction === protectionDraft.nextAction &&
     activeProtection.deadline === protectionDraft.deadline,
   );
+
+  const activeProtectionTiming = useMemo(
+    () => activeProtection ? getProtectionTiming(activeProtection.deadline) : null,
+    [activeProtection?.deadline],
+  );
+
+  async function markProtectionUseful() {
+    if (protectionUsefulSent || !activeProtection) return;
+    setProtectionUsefulSent(true);
+    const id = await ensureSessionId().catch(() => '');
+    if (id) void sendTelemetry({ event: 'protection_event_useful', sessionId: id }).catch(() => {});
+  }
 
   const ctaLabel = !canSubmit
     ? 'Mesaj, link veya ekran görüntüsü ekle'
@@ -274,7 +291,13 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
             <Text style={styles.protectionTitle}>{activeProtection.title || 'Korunan taahhüt'}</Text>
             {!!activeProtection.provider && <Text style={styles.protectionText}>Sağlayıcı: {activeProtection.provider}</Text>}
             {!!activeProtection.deadline && <Text style={styles.protectionText}>Kritik tarih: {activeProtection.deadline}</Text>}
+            {activeProtectionTiming && <Text style={styles.protectionTiming}>{activeProtectionTiming.label}</Text>}
             <Text style={styles.protectionText}>Sıradaki aksiyon: {activeProtection.nextAction}</Text>
+            {activeProtectionTiming && ['today', 'soon', 'overdue'].includes(activeProtectionTiming.state) && (
+              <Pressable onPress={markProtectionUseful} disabled={protectionUsefulSent} style={[styles.protectionUseful, protectionUsefulSent && styles.protectionUsefulDone]}>
+                <Text style={styles.protectionUsefulText}>{protectionUsefulSent ? 'Geri bildirim alındı' : 'Bu hatırlatma işime yaradı'}</Text>
+              </Pressable>
+            )}
             <Pressable onPress={removeActiveProtection} style={styles.protectionRemove}>
               <Text style={styles.protectionRemoveText}>Koruma kaydını kaldır</Text>
             </Pressable>
@@ -473,6 +496,10 @@ const styles = StyleSheet.create({
   protectionKicker: { color: '#69D4A5', fontSize: 11, fontWeight: '900', letterSpacing: 1 },
   protectionTitle: { color: '#F4FFF9', fontSize: 18, fontWeight: '900' },
   protectionText: { color: '#C7DDD5', fontSize: 13, lineHeight: 19 },
+  protectionTiming: { color: '#69D4A5', fontSize: 14, lineHeight: 20, fontWeight: '900' },
+  protectionUseful: { alignSelf: 'flex-start', backgroundColor: '#123A30', borderWidth: 1, borderColor: '#2D6B57', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, marginTop: 3 },
+  protectionUsefulDone: { opacity: 0.65 },
+  protectionUsefulText: { color: '#E6FFF4', fontSize: 12, fontWeight: '800' },
   protectionFieldLabel: { color: '#8FB5A7', fontSize: 11, fontWeight: '800', marginTop: 4 },
   protectionInput: { backgroundColor: '#071F19', borderWidth: 1, borderColor: '#315F51', borderRadius: 11, color: '#F4FFF9', paddingHorizontal: 12, paddingVertical: 10, fontSize: 13 },
   protectionInputMultiline: { minHeight: 76, textAlignVertical: 'top' },

@@ -3,6 +3,7 @@
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { MANIPULATION_LABELS, type ManipulationTactic } from "../lib/manipulation-lens";
 import { sanitizeProtectionCandidate, type ProtectionCandidate, type ProtectionObject } from "../lib/commitment-protection";
+import { getProtectionTiming } from "../lib/protection-status";
 
 type RiskLevel = "low" | "medium" | "high";
 type Analysis = {
@@ -251,6 +252,7 @@ export default function Home() {
   const [activeProtection, setActiveProtection] = useState<ProtectionObject | null>(null);
   const [protectionMessage, setProtectionMessage] = useState("");
   const [protectionDraft, setProtectionDraft] = useState<ProtectionCandidate | null>(null);
+  const [protectionUsefulSent, setProtectionUsefulSent] = useState(false);
 
   useEffect(() => {
     const standalone = window.matchMedia?.("(display-mode: standalone)").matches || Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
@@ -386,8 +388,10 @@ export default function Home() {
     void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "protection_save_intent", sessionId, analysisType }) }).catch(() => undefined);
     const object: ProtectionObject = { ...candidate, id: crypto.randomUUID(), savedAt: new Date().toISOString() };
     window.localStorage.setItem("guvencheck_active_protection", JSON.stringify(object));
+    if (activeProtection) void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "repeat_protection", sessionId, analysisType }) }).catch(() => undefined);
     setActiveProtection(object);
     setProtectionDraft({ ...object });
+    setProtectionUsefulSent(false);
     setProtectionMessage("Koruma aktif. Kritik aksiyonunu burada takip edebilirsin.");
     void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "protection_saved", sessionId, analysisType }) }).catch(() => undefined);
   }
@@ -396,7 +400,19 @@ export default function Home() {
     window.localStorage.removeItem("guvencheck_active_protection");
     setActiveProtection(null);
     setProtectionMessage("");
+    setProtectionUsefulSent(false);
     void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "protection_removed", sessionId }) }).catch(() => undefined);
+  }
+
+  const activeProtectionTiming = useMemo(
+    () => activeProtection ? getProtectionTiming(activeProtection.deadline) : null,
+    [activeProtection?.deadline],
+  );
+
+  function markProtectionUseful() {
+    if (protectionUsefulSent || !activeProtection) return;
+    setProtectionUsefulSent(true);
+    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "protection_event_useful", sessionId }) }).catch(() => undefined);
   }
 
   async function sendFeedback(helpful: boolean, reason = helpful ? "dogru" : "diger") {
@@ -469,7 +485,11 @@ export default function Home() {
           <h2>{activeProtection.title || "Korunan taahhüt"}</h2>
           {activeProtection.provider && <p><strong>Sağlayıcı:</strong> {activeProtection.provider}</p>}
           {activeProtection.deadline && <p><strong>Kritik tarih:</strong> {activeProtection.deadline}</p>}
+          {activeProtectionTiming && <p className="protectionTiming"><strong>{activeProtectionTiming.label}</strong></p>}
           <p><strong>Sıradaki aksiyon:</strong> {activeProtection.nextAction}</p>
+          {activeProtectionTiming && ["today", "soon", "overdue"].includes(activeProtectionTiming.state) && (
+            <button type="button" className="secondary protectionUseful" disabled={protectionUsefulSent} onClick={markProtectionUseful}>{protectionUsefulSent ? "Geri bildirim alındı" : "Bu hatırlatma işime yaradı"}</button>
+          )}
           <button type="button" className="secondary" onClick={removeProtection}>Koruma kaydını kaldır</button>
         </section>
       )}
