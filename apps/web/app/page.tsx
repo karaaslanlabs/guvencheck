@@ -225,7 +225,6 @@ async function createShareCard(analysis: Analysis, appUrl?: string): Promise<Fil
 }
 
 export default function Home() {
-  const [tab, setTab] = useState<"text" | "link" | "image">("image");
   const [value, setValue] = useState("");
   const [imageData, setImageData] = useState<string | null>(null);
   const [imageName, setImageName] = useState("");
@@ -260,22 +259,13 @@ export default function Home() {
     }).catch(() => undefined);
   }, []);
 
-  const normalizedLink = tab === "link" ? normalizeUrl(value) : null;
-  const linkIsValid = tab !== "link" || value.trim().length === 0 || Boolean(normalizedLink);
+  const normalizedLink = normalizeUrl(value);
+  const analysisType: "text" | "link" | "image" = imageData ? "image" : normalizedLink ? "link" : "text";
   const canSubmit = useMemo(() => {
     if (processingImage) return false;
-    if (tab === "image") return Boolean(imageData);
-    if (tab === "link") return value.trim().length >= 4 && Boolean(normalizeUrl(value));
+    if (imageData) return true;
     return value.trim().length >= 3;
-  }, [tab, imageData, processingImage, value]);
-
-  function switchTab(next: "text" | "link" | "image") {
-    setTab(next);
-    setAnalysis(null);
-    setError("");
-    setCopied(false);
-    setFeedbackState("idle");
-  }
+  }, [imageData, processingImage, value]);
 
   async function handleImage(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -284,6 +274,7 @@ export default function Home() {
     setError("");
     try {
       const compressed = await compressImage(file);
+      setValue("");
       setImageData(compressed);
       setImageName(file.name);
     } catch (err) {
@@ -301,14 +292,14 @@ export default function Home() {
     setError("");
     setAnalysis(null);
     try {
-      void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "analysis_started", sessionId, analysisType: tab }) }).catch(() => undefined);
+      void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "analysis_started", sessionId, analysisType }) }).catch(() => undefined);
       const response = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(sessionId ? { "X-GuvenCheck-Session": sessionId } : {}) },
         body: JSON.stringify({
-          type: tab,
-          content: tab === "image" ? undefined : tab === "link" ? normalizeUrl(value) : value.trim(),
-          imageData: tab === "image" ? imageData : undefined,
+          type: analysisType,
+          content: analysisType === "image" ? undefined : analysisType === "link" ? normalizedLink : value.trim(),
+          imageData: analysisType === "image" ? imageData : undefined,
         }),
       });
       const data = await response.json();
@@ -319,13 +310,13 @@ export default function Home() {
       setAnalysis(data);
       void fetch("/api/telemetry", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ event: "analysis_completed", sessionId, analysisType: tab, score: data.score, level: data.level, route: data.meta?.route, latencyMs: data.meta?.latencyMs })
+        body: JSON.stringify({ event: "analysis_completed", sessionId, analysisType, score: data.score, level: data.level, route: data.meta?.route, latencyMs: data.meta?.latencyMs })
       }).catch(() => undefined);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Beklenmeyen hata oluştu.";
       setError(message);
-      void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "analysis_error", sessionId, analysisType: tab }) }).catch(() => undefined);
+      void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "analysis_error", sessionId, analysisType }) }).catch(() => undefined);
     } finally {
       setLoading(false);
     }
@@ -349,7 +340,7 @@ export default function Home() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          helpful, reason, analysisType: tab, score: analysis.score, level: analysis.level,
+          helpful, reason, analysisType, score: analysis.score, level: analysis.level,
           route: analysis.meta?.route, requestId: analysis.requestId, sessionId
         })
       });
@@ -361,17 +352,15 @@ export default function Home() {
 
   const submitLabel = loading
     ? "Analiz sürüyor…"
-    : canSubmit
-      ? "Kontrol et"
-      : tab === "image"
-        ? "Önce ekran görüntüsü seç"
-        : tab === "text"
-          ? "Önce mesajı yapıştır"
-          : "Önce linki gir";
+    : processingImage
+      ? "Görsel hazırlanıyor…"
+      : canSubmit
+        ? "Kontrol et"
+        : "Mesaj, link veya ekran görüntüsü ekle";
 
   async function shareResult() {
     if (!analysis) return;
-    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "share_clicked", sessionId, analysisType: tab, score: analysis.score, level: analysis.level }) }).catch(() => undefined);
+    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "share_clicked", sessionId, analysisType, score: analysis.score, level: analysis.level }) }).catch(() => undefined);
     const appUrl = window.location.origin;
     const text = `GüvenCheck: ${levelText[analysis.level]}. ${analysis.actions[0] || analysis.summary} — Göndermeden. Ödemeden. Tıklamadan önce.\n\nSen de şüpheli bir içerik aldıysan kontrol et: ${appUrl}`;
     const card = await createShareCard(analysis, appUrl).catch(() => null);
@@ -410,38 +399,34 @@ export default function Home() {
       {!analysis ? (
         <section className="card heroCard">
           <h1>Şüpheli bir şey mi var?</h1>
-          <p className="lead">Mesajı, linki veya ekran görüntüsünü kontrol et. Risk seviyesini ve ne yapman gerektiğini sade Türkçeyle gör.</p>
+          <p className="lead">Şüpheli dijital içeriği tek yerden gönder. Mesaj, link veya ekran görüntüsü fark etmez; GüvenCheck uygun kontrol yolunu kendi seçer.</p>
 
-          <div className="tabs" role="tablist" aria-label="Analiz türü">
-            <button className={`imageTab ${tab === "image" ? "active" : ""}`} onClick={() => switchTab("image")}><span>Ekran görüntüsü</span><em>En kolay yol</em></button>
-            <button className={tab === "text" ? "active" : ""} onClick={() => switchTab("text")}>Mesaj</button>
-            <button className={tab === "link" ? "active" : ""} onClick={() => switchTab("link")}>Link</button>
+          <div className="inputWrap">
+            <textarea
+              value={value}
+              maxLength={12000}
+              inputMode="text"
+              onChange={(e) => { setValue(e.target.value); setImageData(null); setImageName(""); setError(""); }}
+              placeholder="Şüpheli mesajı, linki, teklif veya taahhüt metnini buraya yapıştır..."
+              rows={6}
+            />
+            {value.length > 0 && !imageData && <span className="charCount">{value.length}/12000</span>}
           </div>
 
-          {tab === "image" ? (
-            <label className={`dropzone ${imageData ? "hasImage" : ""}`}>
-              <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleImage} />
-              {!imageData && <span className="camera" aria-hidden="true">▣</span>}
-              <strong>{processingImage ? "Görsel hazırlanıyor…" : imageName || "Ekran görüntüsü seç"}</strong>
-              {!imageData && <span>SMS, WhatsApp, e-posta veya ilan ekranı</span>}
-              {imageData && <img className="preview" src={imageData} alt="Seçilen ekran görüntüsü" />}
-              {imageData && <span className="changeImage">Değiştirmek için dokun</span>}
-            </label>
-          ) : (
-            <div className="inputWrap">
-              <textarea
-                value={value}
-                maxLength={12000}
-                inputMode={tab === "link" ? "url" : "text"}
-                onChange={(e) => { setValue(e.target.value); setError(""); }}
-                placeholder={tab === "link" ? "https://ornek-site.com/..." : "Örn: Sayın müşterimiz, hesabınız askıya alınacaktır..."}
-                rows={7}
-              />
-              {tab === "text" && value.length > 0 && <span className="charCount">{value.length}/12000</span>}
-            </div>
+          <label className={`dropzone ${imageData ? "hasImage" : ""}`}>
+            <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleImage} />
+            {!imageData && <span className="camera" aria-hidden="true">▣</span>}
+            <strong>{processingImage ? "Görsel hazırlanıyor…" : imageName || "Ekran görüntüsü ekle"}</strong>
+            {!imageData && <span>İstersen screenshot ekle; sistem içerik türünü kendi seçer.</span>}
+            {imageData && <img className="preview" src={imageData} alt="Seçilen ekran görüntüsü" />}
+            {imageData && <span className="changeImage">Değiştirmek için dokun</span>}
+          </label>
+          {imageData && (
+            <button type="button" className="secondary" onClick={() => { setImageData(null); setImageName(""); }}>
+              Görseli kaldır
+            </button>
           )}
 
-          {tab === "link" && !linkIsValid && <div className="hintError">Geçerli bir alan adı veya link gir. Örn: guvencheck.com veya https://guvencheck.com</div>}
           {error && <div className="error">{error}</div>}
 
           <button className="primary" disabled={!canSubmit || loading} onClick={analyze}>

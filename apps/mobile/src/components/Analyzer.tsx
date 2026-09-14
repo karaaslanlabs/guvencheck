@@ -14,7 +14,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { analyze, sendTelemetry } from '../lib/api';
 import { uriToDataUrl } from '../lib/image';
-import { normalizeUrl } from '../lib/url';
+import { looksLikeUrl, normalizeUrl } from '../lib/url';
 import { createSessionId, getInstallId } from '../lib/install-id';
 import type { AnalysisResult, AnalysisType } from '../lib/types';
 import { ResultCard } from './ResultCard';
@@ -31,7 +31,6 @@ type Prefill = {
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export function Analyzer({ prefill }: { prefill?: Prefill }) {
-  const [type, setType] = useState<AnalysisType>(prefill?.type || 'image');
   const [value, setValue] = useState(prefill?.text || '');
   const [imageUri, setImageUri] = useState(prefill?.imageUri || '');
   const [imageMime, setImageMime] = useState(prefill?.imageMime || 'image/jpeg');
@@ -70,22 +69,14 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
     };
   }, []);
 
+  const analysisType: AnalysisType = imageUri ? 'image' : looksLikeUrl(value) ? 'link' : 'text';
+
   const canSubmit = useMemo(
-    () =>
-      type === 'image'
-        ? Boolean(imageUri)
-        : type === 'link'
-          ? Boolean(normalizeUrl(value))
-          : value.trim().length >= 3,
-    [type, imageUri, value],
+    () => Boolean(imageUri) || value.trim().length >= 3,
+    [imageUri, value],
   );
 
-  const isSharedPrefill = Boolean(
-    prefill && (
-      (type === 'image' && imageUri) ||
-      (type !== 'image' && value.trim())
-    ),
-  );
+  const isSharedPrefill = Boolean(prefill && (imageUri || value.trim()));
 
   async function pickImage() {
     const res = await ImagePicker.launchImageLibraryAsync({
@@ -94,7 +85,7 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
     });
 
     if (!res.canceled) {
-      setType('image');
+      setValue('');
       setImageUri(res.assets[0].uri);
       setImageMime(res.assets[0].mimeType || 'image/jpeg');
       setResult(null);
@@ -103,12 +94,12 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
   }
 
   async function buildPayload() {
-    const payload: any = { type };
+    const payload: any = { type: analysisType };
 
-    if (type === 'image') {
+    if (analysisType === 'image') {
       payload.imageData = await uriToDataUrl(imageUri, imageMime);
     } else {
-      payload.content = type === 'link' ? normalizeUrl(value) : value.trim();
+      payload.content = analysisType === 'link' ? normalizeUrl(value) : value.trim();
     }
 
     return payload;
@@ -131,7 +122,7 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
       void sendTelemetry({
         event: 'analysis_started',
         sessionId: activeSessionId,
-        analysisType: type,
+        analysisType,
       }).catch(() => {});
 
       const payload = await buildPayload();
@@ -152,7 +143,7 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
       void sendTelemetry({
         event: 'analysis_completed',
         sessionId: sessionIdRef.current,
-        analysisType: type,
+        analysisType,
         score: analysisResult.score,
         level: analysisResult.level,
         route: typeof meta?.route === 'string' ? meta.route : undefined,
@@ -162,7 +153,7 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
       void sendTelemetry({
         event: 'analysis_error',
         sessionId: sessionIdRef.current,
-        analysisType: type,
+        analysisType,
         latencyMs: Date.now() - startedAt,
       }).catch(() => {});
 
@@ -182,27 +173,12 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
     setError('');
     setValue('');
     setImageUri('');
-    setType('image');
-  }
-
-  function selectType(nextType: AnalysisType) {
-    setType(nextType);
-    setResult(null);
-    setError('');
   }
 
   const ctaLabel = !canSubmit
-    ? type === 'image'
-      ? 'Önce ekran görüntüsü seç'
-      : type === 'text'
-        ? 'Önce mesajı yapıştır'
-        : 'Önce linki gir'
+    ? 'Mesaj, link veya ekran görüntüsü ekle'
     : isSharedPrefill
-      ? type === 'image'
-        ? 'Paylaşılan ekran görüntüsünü kontrol et'
-        : type === 'link'
-          ? 'Paylaşılan linki kontrol et'
-          : 'Paylaşılan mesajı kontrol et'
+      ? 'Paylaşılan içeriği kontrol et'
       : 'Kontrol et';
 
   return (
@@ -226,75 +202,42 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
           <>
             <Text style={styles.hero}>Şüpheli bir şey mi var?</Text>
             <Text style={styles.sub}>
-              Mesajı, linki veya ekran görüntüsünü kontrol et. Risk seviyesini
-              ve ne yapman gerektiğini sade Türkçeyle gör.
+              Şüpheli dijital içeriği tek yerden gönder. Mesaj, link veya ekran görüntüsü fark etmez;
+              GüvenCheck uygun kontrol yolunu kendi seçer.
             </Text>
 
-            <View style={styles.tabs}>
-              {(['image', 'text', 'link'] as AnalysisType[]).map(t => (
-                <Pressable
-                  key={t}
-                  onPress={() => selectType(t)}
-                  style={[styles.tab, type === t && styles.tabActive]}
-                >
-                  <Text
-                    style={[
-                      styles.tabText,
-                      type === t && styles.tabTextActive,
-                    ]}
-                  >
-                    {t === 'image'
-                      ? 'Ekran görüntüsü'
-                      : t === 'text'
-                        ? 'Mesaj'
-                        : 'Link'}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
+            <TextInput
+              value={value}
+              onChangeText={(text) => { setValue(text); setImageUri(''); setImageMime('image/jpeg'); }}
+              multiline
+              autoCapitalize="none"
+              autoCorrect={false}
+              placeholder="Şüpheli mesajı, linki, teklif veya taahhüt metnini buraya yapıştır..."
+              placeholderTextColor="#69857C"
+              style={[styles.input, { minHeight: 150, textAlignVertical: 'top' }]}
+            />
 
-            {type === 'image' ? (
-              <Pressable onPress={pickImage} style={styles.upload}>
-                {imageUri ? (
-                  <>
-                    <Image source={{ uri: imageUri }} style={styles.preview} />
-                    <View style={styles.changeImageBadge}>
-                      <Text style={styles.changeImageText}>
-                        Değiştirmek için dokun
-                      </Text>
-                    </View>
-                  </>
-                ) : (
-                  <>
-                    <Text style={styles.uploadIcon}>▧</Text>
-                    <Text style={styles.uploadTitle}>Ekran görüntüsü seç</Text>
-                    <Text style={styles.uploadSub}>
-                      SMS, WhatsApp, e-posta veya ilan ekranı
-                    </Text>
-                  </>
-                )}
+            <Pressable onPress={pickImage} style={styles.upload}>
+              {imageUri ? (
+                <>
+                  <Image source={{ uri: imageUri }} style={styles.preview} />
+                  <View style={styles.changeImageBadge}>
+                    <Text style={styles.changeImageText}>Değiştirmek için dokun</Text>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.uploadIcon}>▧</Text>
+                  <Text style={styles.uploadTitle}>Ekran görüntüsü ekle</Text>
+                  <Text style={styles.uploadSub}>İstersen screenshot ekle; sistem içerik türünü kendi seçer.</Text>
+                </>
+              )}
+            </Pressable>
+
+            {!!imageUri && (
+              <Pressable onPress={() => { setImageUri(''); setImageMime('image/jpeg'); }} style={styles.retryButton}>
+                <Text style={styles.retryButtonText}>Görseli kaldır</Text>
               </Pressable>
-            ) : (
-              <TextInput
-                value={value}
-                onChangeText={setValue}
-                multiline={type === 'text'}
-                autoCapitalize="none"
-                autoCorrect={false}
-                placeholder={
-                  type === 'text'
-                    ? 'Şüpheli mesajı buraya yapıştır...'
-                    : 'ornek.com'
-                }
-                placeholderTextColor="#69857C"
-                style={[
-                  styles.input,
-                  type === 'text' && {
-                    minHeight: 150,
-                    textAlignVertical: 'top',
-                  },
-                ]}
-              />
             )}
 
             <Pressable
@@ -340,7 +283,7 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
           </>
         )}
 
-        {result && <ResultCard result={result} analysisType={type} sessionId={sessionId} onReset={reset} />}
+        {result && <ResultCard result={result} analysisType={analysisType} sessionId={sessionId} onReset={reset} />}
 
         <View style={styles.footerBranding}>
           <Text style={styles.footer}>
