@@ -396,8 +396,6 @@ export default function Home() {
     setError("");
     setCopied(false);
     setFeedbackState("idle");
-    setPayerRole("");
-    setPaymentInterest("");
   }
 
   function saveProtection() {
