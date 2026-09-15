@@ -1,9 +1,11 @@
 import { Platform } from 'react-native';
-import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 import type { ProtectionCandidate, ProtectionReminderState } from './types';
 import { getProtectionReminderAt } from './protection-reminder-policy';
 
 const CHANNEL_ID = 'guvencheck-protection';
+type NotificationsModule = typeof import('expo-notifications');
+let notificationsModulePromise: Promise<NotificationsModule> | null = null;
 
 export type ProtectionReminderResult = {
   reminderState: ProtectionReminderState;
@@ -11,7 +13,17 @@ export type ProtectionReminderResult = {
   reminderAt?: string;
 };
 
-async function ensureAndroidChannel() {
+function isExpoGo() {
+  return Constants.appOwnership === 'expo';
+}
+
+async function getNotifications() {
+  if (Platform.OS === 'web' || isExpoGo()) return null;
+  if (!notificationsModulePromise) notificationsModulePromise = import('expo-notifications');
+  return notificationsModulePromise;
+}
+
+async function ensureAndroidChannel(Notifications: NotificationsModule) {
   if (Platform.OS !== 'android') return;
   await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
     name: 'Koruma hatırlatmaları',
@@ -23,27 +35,34 @@ async function ensureAndroidChannel() {
 }
 
 export function configureProtectionNotifications() {
-  if (Platform.OS === 'web') return;
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowBanner: true,
-      shouldShowList: true,
-      shouldPlaySound: true,
-      shouldSetBadge: false,
-      priority: Notifications.AndroidNotificationPriority.DEFAULT,
-    }),
-  });
+  if (Platform.OS === 'web' || isExpoGo()) return;
+  void getNotifications()
+    .then((Notifications) => {
+      if (!Notifications) return;
+      Notifications.setNotificationHandler({
+        handleNotification: async () => ({
+          shouldShowBanner: true,
+          shouldShowList: true,
+          shouldPlaySound: true,
+          shouldSetBadge: false,
+          priority: Notifications.AndroidNotificationPriority.DEFAULT,
+        }),
+      });
+    })
+    .catch(() => undefined);
 }
 
 export async function scheduleProtectionReminder(
   candidate: ProtectionCandidate,
 ): Promise<ProtectionReminderResult> {
-  if (Platform.OS === 'web') return { reminderState: 'unavailable' };
+  if (Platform.OS === 'web' || isExpoGo()) return { reminderState: 'unavailable' };
   const reminderAt = getProtectionReminderAt(candidate.deadline);
   if (!reminderAt) return { reminderState: 'not_scheduled' };
 
   try {
-    await ensureAndroidChannel();
+    const Notifications = await getNotifications();
+    if (!Notifications) return { reminderState: 'unavailable' };
+    await ensureAndroidChannel(Notifications);
     let permissions = await Notifications.getPermissionsAsync();
     if (!permissions.granted) permissions = await Notifications.requestPermissionsAsync();
     if (!permissions.granted) return { reminderState: 'permission_denied' };
@@ -73,6 +92,8 @@ export async function scheduleProtectionReminder(
 }
 
 export async function cancelProtectionReminder(notificationId?: string) {
-  if (!notificationId) return;
+  if (!notificationId || Platform.OS === 'web' || isExpoGo()) return;
+  const Notifications = await getNotifications();
+  if (!Notifications) return;
   await Notifications.cancelScheduledNotificationAsync(notificationId).catch(() => undefined);
 }
