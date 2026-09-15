@@ -597,34 +597,6 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     maxWidth: 520,
   },
-  tabs: {
-    flexDirection: 'row',
-    backgroundColor: '#0A251F',
-    borderWidth: 1,
-    borderColor: '#143D33',
-    padding: 4,
-    borderRadius: 16,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: 'center',
-    borderRadius: 12,
-  },
-  tabActive: {
-    backgroundColor: '#124636',
-    borderWidth: 1,
-    borderColor: '#1B6A4D',
-  },
-  tabText: {
-    color: '#73978B',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  tabTextActive: {
-    color: '#F6FFF9',
-    fontWeight: '900',
-  },
   protectionCard: {
     backgroundColor: '#0B2A22', borderWidth: 1, borderColor: '#2D6B57', borderRadius: 18, padding: 16, gap: 8,
   },
