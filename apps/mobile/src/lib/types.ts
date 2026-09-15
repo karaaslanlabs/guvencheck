@@ -1,6 +1,7 @@
 export type AnalysisType = 'text' | 'link' | 'image';
 export type RiskLevel = 'low' | 'medium' | 'high';
 export type ProtectionKind = 'none' | 'trial' | 'subscription' | 'commitment' | 'purchase' | 'deadline';
+export type ProtectionReminderState = 'scheduled' | 'permission_denied' | 'not_scheduled' | 'unavailable';
 
 export type ProtectionCandidate = {
   eligible: boolean;
@@ -15,6 +16,10 @@ export type ProtectionCandidate = {
 export type ProtectionObject = ProtectionCandidate & {
   id: string;
   savedAt: string;
+  sourceRequestId?: string;
+  reminderState?: ProtectionReminderState;
+  notificationId?: string;
+  reminderAt?: string;
 };
 
 export type AnalysisResult = {

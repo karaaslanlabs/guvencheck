@@ -1,6 +1,7 @@
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
+import { configureProtectionNotifications } from '@/src/lib/protection-notifications';
 import { useRef, useState } from 'react';
 import {
   Animated,
@@ -11,6 +12,7 @@ import {
   View,
 } from 'react-native';
 
+configureProtectionNotifications();
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 export default function RootLayout() {

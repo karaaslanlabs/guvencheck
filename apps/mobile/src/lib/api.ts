@@ -60,6 +60,8 @@ export type TelemetryEvent =
   | 'analysis_error'
   | 'share_clicked'
   | 'privacy_view'
+  | 'protection_candidate_eligible'
+  | 'protection_action_due_view'
   | 'protection_save_intent'
   | 'protection_saved'
   | 'protection_removed'

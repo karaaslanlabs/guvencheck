@@ -9,7 +9,8 @@
     "ios": "expo run:ios",
     "prebuild": "expo prebuild",
     "doctor": "expo-doctor",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.ts"
   },
   "dependencies": {
     "expo": "~57.0.15",
@@ -19,6 +20,7 @@
     "expo-image": "~57.0.5",
     "expo-image-picker": "~57.0.17",
     "expo-linking": "~57.0.7",
+    "expo-notifications": "~57.0.18",
     "expo-router": "~57.0.15",
     "expo-sharing": "~57.0.14",
     "expo-splash-screen": "~57.0.7",

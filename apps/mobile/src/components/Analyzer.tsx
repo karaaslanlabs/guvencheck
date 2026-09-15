@@ -17,7 +17,8 @@ import { uriToDataUrl } from '../lib/image';
 import { looksLikeUrl, normalizeUrl } from '../lib/url';
 import { createSessionId, getInstallId } from '../lib/install-id';
 import { clearProtection, loadProtection, saveProtection } from '../lib/protection-store';
-import { getProtectionTiming } from '../lib/protection-status';
+import { getProtectionTiming, isProtectionActionDue } from '../lib/protection-status';
+import { cancelProtectionReminder, scheduleProtectionReminder } from '../lib/protection-notifications';
 import { deriveDeepVerification } from '../lib/deep-verification';
 import type { AnalysisResult, AnalysisType, ProtectionCandidate, ProtectionObject } from '../lib/types';
 import { ResultCard } from './ResultCard';
@@ -32,6 +33,20 @@ type Prefill = {
 };
 
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+function reminderStatusText(protection: ProtectionObject) {
+  if (protection.reminderState === 'scheduled' && protection.reminderAt) {
+    const date = new Date(protection.reminderAt);
+    if (!Number.isNaN(date.getTime())) {
+      const pad = (value: number) => String(value).padStart(2, '0');
+      return `Hatırlatma: ${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    }
+  }
+  if (protection.reminderState === 'permission_denied') return 'Bildirim izni kapalı; koruma uygulama içinde takip ediliyor.';
+  if (protection.reminderState === 'unavailable') return 'Bildirim planlanamadı; uygulama içi takip devam ediyor.';
+  if (protection.reminderState === 'not_scheduled' && protection.deadline) return 'Bu tarih için ek bildirim planlanmadı; uygulama içi takip aktif.';
+  return '';
+}
 
 function validDraftDate(value: string) {
   if (!value) return true;
@@ -95,7 +110,7 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
         setActiveProtection(protection);
         if (protection) {
           const id = await ensureSessionId();
-          void sendTelemetry({ event: 'protection_status_view', sessionId: id }).catch(() => {});
+          void sendTelemetry({ event: 'protection_status_view', sessionId: id, requestId: protection.sourceRequestId }).catch(() => {});
         }
       })
       .catch(() => {});
@@ -202,7 +217,17 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
         level: analysisResult.level,
         route: typeof meta?.route === 'string' ? meta.route : undefined,
         latencyMs: Date.now() - startedAt,
+        requestId: analysisResult.requestId,
       }).catch(() => {});
+
+      if (analysisResult.protectionCandidate?.eligible === true) {
+        void sendTelemetry({
+          event: 'protection_candidate_eligible',
+          sessionId: sessionIdRef.current,
+          analysisType,
+          requestId: analysisResult.requestId,
+        }).catch(() => {});
+      }
     } catch (e) {
       void sendTelemetry({
         event: 'analysis_error',
@@ -238,15 +263,22 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
     }
     setProtectionSaving(true);
     const id = await ensureSessionId().catch(() => '');
-    if (id) void sendTelemetry({ event: 'protection_save_intent', sessionId: id, analysisType }).catch(() => {});
+    if (id) void sendTelemetry({ event: 'protection_save_intent', sessionId: id, analysisType, requestId: result?.requestId }).catch(() => {});
+    let newlyScheduledNotificationId: string | undefined;
     try {
-      const object = await saveProtection(protectionDraft);
-      if (activeProtection) void sendTelemetry({ event: 'repeat_protection', sessionId: id, analysisType }).catch(() => {});
+      const reminder = await scheduleProtectionReminder(protectionDraft);
+      newlyScheduledNotificationId = reminder.notificationId;
+      const object = await saveProtection(protectionDraft, result?.requestId, reminder);
+      if (activeProtection?.notificationId && activeProtection.notificationId !== object.notificationId) {
+        await cancelProtectionReminder(activeProtection.notificationId);
+      }
+      if (activeProtection) void sendTelemetry({ event: 'repeat_protection', sessionId: id, analysisType, requestId: result?.requestId }).catch(() => {});
       setActiveProtection(object);
       setProtectionDraft({ ...object });
       setProtectionUsefulSent(false);
-      if (id) void sendTelemetry({ event: 'protection_saved', sessionId: id, analysisType }).catch(() => {});
+      if (id) void sendTelemetry({ event: 'protection_saved', sessionId: id, analysisType, requestId: result?.requestId }).catch(() => {});
     } catch (error) {
+      await cancelProtectionReminder(newlyScheduledNotificationId);
       setProtectionError(error instanceof Error ? error.message : 'Koruma kaydı oluşturulamadı.');
     } finally {
       setProtectionSaving(false);
@@ -254,6 +286,7 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
   }
 
   async function removeActiveProtection() {
+    await cancelProtectionReminder(activeProtection?.notificationId);
     await clearProtection().catch(() => {});
     setActiveProtection(null);
     setProtectionUsefulSent(false);
@@ -274,11 +307,22 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
     [activeProtection?.deadline],
   );
 
+  useEffect(() => {
+    if (!activeProtection || result || !isProtectionActionDue(activeProtectionTiming)) return;
+    void ensureSessionId()
+      .then(id => sendTelemetry({
+        event: 'protection_action_due_view',
+        sessionId: id,
+        requestId: activeProtection.sourceRequestId,
+      }))
+      .catch(() => {});
+  }, [activeProtection?.id, activeProtection?.sourceRequestId, activeProtectionTiming?.state, result?.requestId]);
+
   async function markProtectionUseful() {
     if (protectionUsefulSent || !activeProtection) return;
     setProtectionUsefulSent(true);
     const id = await ensureSessionId().catch(() => '');
-    if (id) void sendTelemetry({ event: 'protection_event_useful', sessionId: id }).catch(() => {});
+    if (id) void sendTelemetry({ event: 'protection_event_useful', sessionId: id, requestId: activeProtection.sourceRequestId }).catch(() => {});
   }
 
   async function markDeepVerificationInterest() {
@@ -323,6 +367,7 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
             {!!activeProtection.provider && <Text style={styles.protectionText}>Sağlayıcı: {activeProtection.provider}</Text>}
             {!!activeProtection.deadline && <Text style={styles.protectionText}>Kritik tarih: {activeProtection.deadline}</Text>}
             {activeProtectionTiming && <Text style={styles.protectionTiming}>{activeProtectionTiming.label}</Text>}
+            {!!reminderStatusText(activeProtection) && <Text style={styles.protectionText}>{reminderStatusText(activeProtection)}</Text>}
             <Text style={styles.protectionText}>Sıradaki aksiyon: {activeProtection.nextAction}</Text>
             {activeProtectionTiming && ['today', 'soon', 'overdue'].includes(activeProtectionTiming.state) && (
               <Pressable onPress={markProtectionUseful} disabled={protectionUsefulSent} style={[styles.protectionUseful, protectionUsefulSent && styles.protectionUsefulDone]}>
