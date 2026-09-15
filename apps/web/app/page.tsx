@@ -257,8 +257,6 @@ export default function Home() {
   const [protectionDraft, setProtectionDraft] = useState<ProtectionCandidate | null>(null);
   const [protectionUsefulSent, setProtectionUsefulSent] = useState(false);
   const [deepVerificationInterested, setDeepVerificationInterested] = useState(false);
-  const [payerRole, setPayerRole] = useState<"self" | "family" | "work" | "">("");
-  const [paymentInterest, setPaymentInterest] = useState<"yes" | "maybe" | "no" | "">("");
 
   useEffect(() => {
     const standalone = window.matchMedia?.("(display-mode: standalone)").matches || Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
@@ -455,9 +453,6 @@ export default function Home() {
     void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "deep_verification_interest", sessionId, analysisType, requestId: analysis?.requestId }) }).catch(() => undefined);
   }
 
-  function recordRevenueEvidence(event: "payer_role" | "payment_interest", value: "self" | "family" | "work" | "yes" | "maybe" | "no") {
-    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event, value, sessionId, analysisType, requestId: analysis?.requestId }) }).catch(() => undefined);
-  }
 
   async function sendFeedback(helpful: boolean, reason = helpful ? "dogru" : "diger") {
     if (!analysis || feedbackState === "sending" || feedbackState === "sent") return;
@@ -634,27 +629,10 @@ export default function Home() {
 
           {deepVerification.eligible && (
             <div className="section decisionSupport">
-              <h3>Daha derin doğrulama anlamlı olabilir</h3>
+              <h3>Ek doğrulama faydalı olabilir</h3>
               <p>{deepVerification.reason}</p>
-              <p>Bu buton ödeme veya sipariş başlatmaz; yalnız bu tür vakalarda daha derin doğrulamaya ilgi olup olmadığını ölçer.</p>
-              <button type="button" className="secondary" disabled={deepVerificationInterested} onClick={markDeepVerificationInterest}>{deepVerificationInterested ? "İlgin kaydedildi" : "Daha derin doğrulamayla ilgileniyorum"}</button>
-              {deepVerificationInterested && (
-                <div className="feedbackReasons">
-                  <strong>Bu tür doğrulamayı en çok kimin için kullanırdın?</strong>
-                  <div className="feedbackButtons">
-                    <button disabled={Boolean(payerRole)} onClick={() => { setPayerRole("self"); recordRevenueEvidence("payer_role", "self"); }}>Kendim</button>
-                    <button disabled={Boolean(payerRole)} onClick={() => { setPayerRole("family"); recordRevenueEvidence("payer_role", "family"); }}>Ailem</button>
-                    <button disabled={Boolean(payerRole)} onClick={() => { setPayerRole("work"); recordRevenueEvidence("payer_role", "work"); }}>İş için</button>
-                  </div>
-                  <strong>Ek kanıt üreten ücretli bir seçenek olsa değerlendirir miydin?</strong>
-                  <div className="feedbackButtons">
-                    <button disabled={Boolean(paymentInterest)} onClick={() => { setPaymentInterest("yes"); recordRevenueEvidence("payment_interest", "yes"); }}>Evet</button>
-                    <button disabled={Boolean(paymentInterest)} onClick={() => { setPaymentInterest("maybe"); recordRevenueEvidence("payment_interest", "maybe"); }}>Belki</button>
-                    <button disabled={Boolean(paymentInterest)} onClick={() => { setPaymentInterest("no"); recordRevenueEvidence("payment_interest", "no"); }}>Hayır</button>
-                  </div>
-                  {(payerRole || paymentInterest) && <p>Bu yalnız ürün araştırmasıdır; ödeme veya sipariş başlatmaz.</p>}
-                </div>
-              )}
+              <p>GüvenCheck, gerektiğinde daha kapsamlı doğrulamayı kararın doğruluğunu güçlendiren bir destek katmanı olarak kullanır. Doğru sonucu görmek için ayrıca ödeme yapman gerekmez.</p>
+              <button type="button" className="secondary" disabled={deepVerificationInterested} onClick={markDeepVerificationInterest}>{deepVerificationInterested ? "Talebin kaydedildi" : "Bu vakada daha kapsamlı kontrol isterdim"}</button>
             </div>
           )}
 
