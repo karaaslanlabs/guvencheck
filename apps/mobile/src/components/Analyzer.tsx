@@ -71,6 +71,8 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
   const [protectionError, setProtectionError] = useState('');
   const [protectionDraft, setProtectionDraft] = useState<ProtectionCandidate | null>(null);
   const [protectionUsefulSent, setProtectionUsefulSent] = useState(false);
+  const [showProtectionValuePrompt, setShowProtectionValuePrompt] = useState(false);
+  const [protectionPaymentInterest, setProtectionPaymentInterest] = useState<'yes' | 'maybe' | 'no' | ''>('');
   const [deepVerificationInterested, setDeepVerificationInterested] = useState(false);
 
   async function ensureSessionId() {
@@ -136,6 +138,8 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
     const candidate = result?.protectionCandidate;
     setProtectionDraft(candidate?.eligible ? { ...candidate } : null);
     setProtectionError('');
+    setShowProtectionValuePrompt(false);
+    setProtectionPaymentInterest('');
   }, [result]);
 
   useEffect(() => {
@@ -273,6 +277,8 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
       setActiveProtection(object);
       setProtectionDraft({ ...object });
       setProtectionUsefulSent(false);
+      setProtectionPaymentInterest('');
+      setShowProtectionValuePrompt(true);
       if (id) void sendTelemetry({ event: 'protection_saved', sessionId: id, analysisType, requestId: result?.requestId }).catch(() => {});
     } catch (error) {
       await cancelProtectionReminder(newlyScheduledNotificationId);
@@ -287,6 +293,8 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
     await clearProtection().catch(() => {});
     setActiveProtection(null);
     setProtectionUsefulSent(false);
+    setShowProtectionValuePrompt(false);
+    setProtectionPaymentInterest('');
     const id = await ensureSessionId().catch(() => '');
     if (id) void sendTelemetry({ event: 'protection_removed', sessionId: id }).catch(() => {});
   }
@@ -304,6 +312,18 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
     [activeProtection?.deadline],
   );
 
+  const protectionProgress = !activeProtection
+    ? ''
+    : activeProtectionTiming?.state === 'overdue'
+      ? 'Aksiyon bekliyor · Kritik tarih geçti'
+      : activeProtectionTiming?.state === 'today'
+        ? 'Aksiyon zamanı · Bugün'
+        : activeProtectionTiming?.state === 'soon'
+          ? 'Takipte · Kritik tarih yaklaşıyor'
+          : activeProtection.deadline
+            ? 'Takipte · Kritik tarih korunuyor'
+            : 'Takipte · Sıradaki güvenli aksiyon hazır';
+
   useEffect(() => {
     if (!activeProtection || result || !isProtectionActionDue(activeProtectionTiming)) return;
     void ensureSessionId()
@@ -320,6 +340,13 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
     setProtectionUsefulSent(true);
     const id = await ensureSessionId().catch(() => '');
     if (id) void sendTelemetry({ event: 'protection_event_useful', sessionId: id, requestId: activeProtection.sourceRequestId }).catch(() => {});
+  }
+
+  async function markProtectionPaymentInterest(value: 'yes' | 'maybe' | 'no') {
+    if (protectionPaymentInterest || !activeProtection) return;
+    setProtectionPaymentInterest(value);
+    const id = await ensureSessionId().catch(() => '');
+    if (id) void sendTelemetry({ event: 'payment_interest', value, sessionId: id, analysisType, requestId: activeProtection.sourceRequestId }).catch(() => {});
   }
 
   async function markDeepVerificationInterest() {
@@ -355,13 +382,19 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
 
         {activeProtection && !result && (
           <View style={styles.protectionCard}>
-            <Text style={styles.protectionKicker}>KORUMA AKTİF</Text>
+            <Text style={styles.protectionKicker}>KORUMA MERKEZİ</Text>
+            <View style={styles.protectionStatusRow}>
+              <View style={styles.protectionStatusPill}><Text style={styles.protectionStatusPillText}>1 aktif koruma</Text></View>
+              <View style={styles.protectionStatusPill}><Text style={styles.protectionStatusPillText}>{protectionProgress}</Text></View>
+            </View>
             <Text style={styles.protectionTitle}>{activeProtection.title || 'Korunan taahhüt'}</Text>
+            {!!activeProtection.summary && <Text style={styles.protectionText}>{activeProtection.summary}</Text>}
             {!!activeProtection.provider && <Text style={styles.protectionText}>Sağlayıcı: {activeProtection.provider}</Text>}
             {!!activeProtection.deadline && <Text style={styles.protectionText}>Kritik tarih: {activeProtection.deadline}</Text>}
             {activeProtectionTiming && <Text style={styles.protectionTiming}>{activeProtectionTiming.label}</Text>}
             {!!reminderStatusText(activeProtection) && <Text style={styles.protectionText}>{reminderStatusText(activeProtection)}</Text>}
-            <Text style={styles.protectionText}>Sıradaki aksiyon: {activeProtection.nextAction}</Text>
+            <Text style={styles.protectionFieldLabel}>SIRADAKİ GÜVENLİ AKSİYON</Text>
+            <Text style={styles.protectionText}>{activeProtection.nextAction}</Text>
             {activeProtectionTiming && ['today', 'soon', 'overdue'].includes(activeProtectionTiming.state) && (
               <Pressable onPress={markProtectionUseful} disabled={protectionUsefulSent} style={[styles.protectionUseful, protectionUsefulSent && styles.protectionUsefulDone]}>
                 <Text style={styles.protectionUsefulText}>{protectionUsefulSent ? 'Geri bildirim alındı' : 'Bu hatırlatma işime yaradı'}</Text>
@@ -493,6 +526,24 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
               {protectionSaving ? <ActivityIndicator color="#E9FFF6" /> : <Text style={styles.ctaText}>{currentCandidateSaved ? 'Koruma aktif' : activeProtection ? 'Aktif korumayı bununla değiştir' : 'Korumaya al'}</Text>}
             </Pressable>
             {!!protectionError && <Text style={styles.error}>{protectionError}</Text>}
+            {showProtectionValuePrompt && currentCandidateSaved && (
+              <View style={styles.protectionResearch}>
+                <Text style={styles.protectionFieldLabel}>KORUMA DEĞERİ</Text>
+                <Text style={styles.protectionText}>Birden fazla önemli karar, kritik tarih ve güvenli aksiyonu tek yerde takip eden ücretli bir koruma paketi olsa değerlendirir miydin?</Text>
+                {protectionPaymentInterest ? (
+                  <Text style={styles.protectionResearchDone}>Yanıtın kaydedildi. Teşekkürler.</Text>
+                ) : (
+                  <View style={styles.protectionChoiceRow}>
+                    {(['yes', 'maybe', 'no'] as const).map((choice) => (
+                      <Pressable key={choice} onPress={() => markProtectionPaymentInterest(choice)} style={styles.protectionChoice}>
+                        <Text style={styles.protectionChoiceText}>{choice === 'yes' ? 'Evet' : choice === 'maybe' ? 'Belki' : 'Hayır'}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
+                <Text style={styles.protectionResearchNote}>Bu yalnız ürün araştırmasıdır; ödeme başlatmaz.</Text>
+              </View>
+            )}
           </View>
         )}
 
@@ -580,6 +631,9 @@ const styles = StyleSheet.create({
   protectionKicker: { color: '#69D4A5', fontSize: 11, fontWeight: '900', letterSpacing: 1 },
   protectionTitle: { color: '#F4FFF9', fontSize: 18, fontWeight: '900' },
   protectionText: { color: '#C7DDD5', fontSize: 13, lineHeight: 19 },
+  protectionStatusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  protectionStatusPill: { borderWidth: 1, borderColor: '#315F51', backgroundColor: '#071F19', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 },
+  protectionStatusPillText: { color: '#BEE7D7', fontSize: 10, fontWeight: '800' },
   protectionTiming: { color: '#69D4A5', fontSize: 14, lineHeight: 20, fontWeight: '900' },
   protectionUseful: { alignSelf: 'flex-start', backgroundColor: '#123A30', borderWidth: 1, borderColor: '#2D6B57', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, marginTop: 3 },
   protectionUsefulDone: { opacity: 0.65 },
@@ -587,6 +641,12 @@ const styles = StyleSheet.create({
   protectionFieldLabel: { color: '#8FB5A7', fontSize: 11, fontWeight: '800', marginTop: 4 },
   protectionInput: { backgroundColor: '#071F19', borderWidth: 1, borderColor: '#315F51', borderRadius: 11, color: '#F4FFF9', paddingHorizontal: 12, paddingVertical: 10, fontSize: 13 },
   protectionInputMultiline: { minHeight: 76, textAlignVertical: 'top' },
+  protectionResearch: { marginTop: 8, borderTopWidth: 1, borderTopColor: '#315F51', paddingTop: 12, gap: 8 },
+  protectionChoiceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  protectionChoice: { backgroundColor: '#123A30', borderWidth: 1, borderColor: '#2D6B57', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 9 },
+  protectionChoiceText: { color: '#E6FFF4', fontSize: 12, fontWeight: '900' },
+  protectionResearchDone: { color: '#69D4A5', fontSize: 12, fontWeight: '900' },
+  protectionResearchNote: { color: '#789D90', fontSize: 10, lineHeight: 15 },
   protectionRemove: { alignSelf: 'flex-start', borderWidth: 1, borderColor: '#477B6B', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, marginTop: 3 },
   protectionRemoveText: { color: '#DDF5EB', fontSize: 12, fontWeight: '800' },
   upload: {

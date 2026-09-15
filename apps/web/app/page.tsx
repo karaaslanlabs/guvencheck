@@ -256,6 +256,8 @@ export default function Home() {
   const [protectionMessage, setProtectionMessage] = useState("");
   const [protectionDraft, setProtectionDraft] = useState<ProtectionCandidate | null>(null);
   const [protectionUsefulSent, setProtectionUsefulSent] = useState(false);
+  const [showProtectionValuePrompt, setShowProtectionValuePrompt] = useState(false);
+  const [protectionPaymentInterest, setProtectionPaymentInterest] = useState<"yes" | "maybe" | "no" | "">("");
   const [deepVerificationInterested, setDeepVerificationInterested] = useState(false);
 
   useEffect(() => {
@@ -302,6 +304,8 @@ export default function Home() {
     const candidate = analysis?.protectionCandidate;
     setProtectionDraft(candidate?.eligible ? { ...candidate } : null);
     setProtectionMessage("");
+    setShowProtectionValuePrompt(false);
+    setProtectionPaymentInterest("");
   }, [analysis]);
 
   const deepVerification = useMemo(
@@ -417,7 +421,9 @@ export default function Home() {
     setActiveProtection(object);
     setProtectionDraft({ ...object });
     setProtectionUsefulSent(false);
-    setProtectionMessage("Koruma aktif. Kritik aksiyonunu burada takip edebilirsin.");
+    setProtectionPaymentInterest("");
+    setShowProtectionValuePrompt(true);
+    setProtectionMessage("Koruma aktif. Kritik aksiyonunu Koruma Merkezi’nde takip edebilirsin.");
     void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "protection_saved", sessionId, analysisType, requestId: analysis?.requestId }) }).catch(() => undefined);
   }
 
@@ -426,6 +432,8 @@ export default function Home() {
     setActiveProtection(null);
     setProtectionMessage("");
     setProtectionUsefulSent(false);
+    setShowProtectionValuePrompt(false);
+    setProtectionPaymentInterest("");
     void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "protection_removed", sessionId }) }).catch(() => undefined);
   }
 
@@ -433,6 +441,22 @@ export default function Home() {
     () => activeProtection ? getProtectionTiming(activeProtection.deadline) : null,
     [activeProtection?.deadline],
   );
+
+  const currentCandidateSaved = Boolean(
+    activeProtection && protectionDraft?.eligible &&
+    activeProtection.title === protectionDraft.title &&
+    activeProtection.provider === protectionDraft.provider &&
+    activeProtection.nextAction === protectionDraft.nextAction &&
+    activeProtection.deadline === protectionDraft.deadline
+  );
+
+  const protectionProgress = !activeProtection
+    ? ""
+    : activeProtectionTiming?.state === "overdue" ? "Aksiyon bekliyor · Kritik tarih geçti"
+    : activeProtectionTiming?.state === "today" ? "Aksiyon zamanı · Bugün"
+    : activeProtectionTiming?.state === "soon" ? "Takipte · Kritik tarih yaklaşıyor"
+    : activeProtection.deadline ? "Takipte · Kritik tarih korunuyor"
+    : "Takipte · Sıradaki güvenli aksiyon hazır";
 
   useEffect(() => {
     if (!sessionId || !activeProtection || analysis || !isProtectionActionDue(activeProtectionTiming)) return;
@@ -443,6 +467,12 @@ export default function Home() {
     if (protectionUsefulSent || !activeProtection) return;
     setProtectionUsefulSent(true);
     void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "protection_event_useful", sessionId, requestId: activeProtection.sourceRequestId }) }).catch(() => undefined);
+  }
+
+  function markProtectionPaymentInterest(value: "yes" | "maybe" | "no") {
+    if (protectionPaymentInterest || !activeProtection) return;
+    setProtectionPaymentInterest(value);
+    void fetch("/api/telemetry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "payment_interest", value, sessionId, analysisType, requestId: activeProtection.sourceRequestId }) }).catch(() => undefined);
   }
 
   function markDeepVerificationInterest() {
@@ -520,12 +550,18 @@ export default function Home() {
 
       {activeProtection && !analysis && (
         <section className="card">
-          <div className="eyebrow">KORUMA AKTİF</div>
+          <div className="eyebrow">KORUMA MERKEZİ</div>
+          <div className="protectionStatusRow">
+            <span>1 aktif koruma</span>
+            <span>{protectionProgress}</span>
+          </div>
           <h2>{activeProtection.title || "Korunan taahhüt"}</h2>
+          {activeProtection.summary && <p>{activeProtection.summary}</p>}
           {activeProtection.provider && <p><strong>Sağlayıcı:</strong> {activeProtection.provider}</p>}
           {activeProtection.deadline && <p><strong>Kritik tarih:</strong> {activeProtection.deadline}</p>}
           {activeProtectionTiming && <p className="protectionTiming"><strong>{activeProtectionTiming.label}</strong></p>}
-          <p><strong>Sıradaki aksiyon:</strong> {activeProtection.nextAction}</p>
+          <p className="protectionActionLabel"><strong>Sıradaki güvenli aksiyon</strong></p>
+          <p>{activeProtection.nextAction}</p>
           {isProtectionActionDue(activeProtectionTiming) && (
             <button type="button" className="secondary protectionUseful" disabled={protectionUsefulSent} onClick={markProtectionUseful}>{protectionUsefulSent ? "Geri bildirim alındı" : "Bu hatırlatma işime yaradı"}</button>
           )}
@@ -603,7 +639,7 @@ export default function Home() {
 
           {analysis.officialSafePath && (
             <div className="section decisionSupport">
-              <h3>ResmÃ® / gÃ¼venli yol</h3>
+              <h3>Resmî / güvenli yol</h3>
               <p><strong>{analysis.officialSafePath.title}</strong></p>
               <p>{analysis.officialSafePath.action}</p>
             </div>
@@ -644,8 +680,22 @@ export default function Home() {
               <label className="protectionField">Sıradaki aksiyon<textarea rows={3} value={protectionDraft.nextAction} onChange={(e) => setProtectionDraft(d => d ? { ...d, nextAction: e.target.value } : d)} /></label>
               <p>{protectionDraft.summary}</p>
               <p>Yalnız bu yapılandırılmış özet cihazında saklanır; gönderdiğin ham içerik kaydedilmez.</p>
-              <button type="button" className="secondary" onClick={saveProtection}>Korumaya al</button>
+              <button type="button" className="secondary" disabled={currentCandidateSaved} onClick={saveProtection}>{currentCandidateSaved ? "Koruma aktif" : activeProtection ? "Aktif korumayı bununla değiştir" : "Korumaya al"}</button>
               {protectionMessage && <p><strong>{protectionMessage}</strong></p>}
+              {showProtectionValuePrompt && currentCandidateSaved && (
+                <div className="protectionResearch">
+                  <strong>Koruma değeri</strong>
+                  <p>Birden fazla önemli karar, kritik tarih ve güvenli aksiyonu tek yerde takip eden ücretli bir koruma paketi olsa değerlendirir miydin?</p>
+                  {protectionPaymentInterest ? <p className="protectionResearchDone">Yanıtın kaydedildi. Teşekkürler.</p> : (
+                    <div className="protectionChoices">
+                      <button type="button" onClick={() => markProtectionPaymentInterest("yes")}>Evet</button>
+                      <button type="button" onClick={() => markProtectionPaymentInterest("maybe")}>Belki</button>
+                      <button type="button" onClick={() => markProtectionPaymentInterest("no")}>Hayır</button>
+                    </div>
+                  )}
+                  <small>Bu yalnız ürün araştırmasıdır; ödeme başlatmaz.</small>
+                </div>
+              )}
             </div>
           )}
 
