@@ -37,6 +37,7 @@ const config: ExpoConfig = {
   'expo-router',
   'expo-image',
   'expo-notifications',
+  './plugins/with-live-guard',
   [
       'expo-splash-screen',
       {
