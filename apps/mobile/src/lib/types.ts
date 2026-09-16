@@ -32,6 +32,19 @@ export type AnalysisResult = {
   manipulationSummary?: string;
   protectionCandidate?: ProtectionCandidate;
   officialSafePath?: { kind: string; title: string; action: string } | null;
+  transactionGuard?: {
+    applicable: boolean;
+    decision: 'not_applicable' | 'stop' | 'verify' | 'proceed_cautiously';
+    confidence: 'low' | 'medium' | 'high';
+    summary: string;
+    safeAction: string;
+    evidence: Array<{
+      kind: 'official_domain_match' | 'claimed_entity_mismatch' | 'regulated_entity' | 'analysis_risk';
+      label: string;
+      sourceAuthority?: string;
+      sourceUrl?: string;
+    }>;
+  };
   actions: string[];
   avoid: string[];
   confidence: 'low' | 'medium' | 'high';

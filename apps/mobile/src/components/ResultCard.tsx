@@ -25,6 +25,13 @@ const uncertaintyText = {
   high: 'Yüksek',
 } as const;
 
+const transactionDecisionText = {
+  stop: 'İşlemi durdur',
+  verify: 'Önce doğrula',
+  proceed_cautiously: 'Temkinli ilerle',
+  not_applicable: 'İşlem bağlamı yok',
+} as const;
+
 const riskPalette = {
   high: {
     accent: '#FF8A86',
@@ -305,6 +312,24 @@ export function ResultCard({
           <Text style={styles.decisionSupportText}>
             <Text style={styles.decisionSupportStrong}>Güvenli sonraki adım:</Text> {result.decisionSupport.nextAction}
           </Text>
+        </View>
+      )}
+
+      {result.transactionGuard?.applicable && (
+        <View style={styles.decisionSupport}>
+          <Text style={styles.decisionSupportTitle}>İşlem Güvenliği</Text>
+          <Text style={styles.decisionSupportText}>
+            <Text style={styles.decisionSupportStrong}>{transactionDecisionText[result.transactionGuard.decision]}</Text>
+            {' — '}{result.transactionGuard.summary}
+          </Text>
+          <Text style={styles.decisionSupportText}>
+            <Text style={styles.decisionSupportStrong}>Güvenli sonraki adım:</Text> {result.transactionGuard.safeAction}
+          </Text>
+          {result.transactionGuard.evidence.slice(0, 2).map((item, index) => (
+            <Text key={item.kind + '-' + index} style={styles.decisionSupportText}>
+              • {item.label}
+            </Text>
+          ))}
         </View>
       )}
 
