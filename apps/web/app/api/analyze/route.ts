@@ -7,6 +7,7 @@ import { sanitizeProtectionCandidate } from "../../../lib/commitment-protection"
 import { linkEscalationReasons } from "../../../lib/link-routing";
 import { deriveOfficialSafePath } from "../../../lib/official-safe-path";
 import { lookupCuratedIntelligence } from "../../../lib/verified-intelligence";
+import { deriveTransactionGuard } from "../../../lib/transaction-guard";
 import { lookupReusableLink, recordCuratedHit, recordReuseHit, recordReuseMiss, reuseConfigured, storeReusableLink } from "../../../lib/analysis-reuse-store";
 
 export const runtime = "nodejs";
@@ -561,6 +562,7 @@ export async function POST(req: NextRequest) {
       const enriched = {
         ...result,
         officialSafePath: deriveOfficialSafePath({ type: body.type, text, analysis: result }),
+        transactionGuard: deriveTransactionGuard({ text, analysis: result }),
       };
       return jsonNoStore(
         await preserveProductResultWithShadow(withDecisionSupport(enriched), shadowInput, requestId),
