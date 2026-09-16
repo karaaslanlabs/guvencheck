@@ -1,4 +1,4 @@
-﻿import test from "node:test";
+import test from "node:test";
 import assert from "node:assert/strict";
 import { deriveTransactionGuard } from "../lib/transaction-guard.ts";
 import type { TrustGraphEntity } from "../lib/trust-graph.ts";
@@ -65,4 +65,3 @@ test("returns not applicable when no transaction or trust decision exists", () =
   assert.equal(result.decision, "not_applicable");
   assert.equal(result.applicable, false);
 });
-

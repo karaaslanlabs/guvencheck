@@ -1,4 +1,4 @@
-﻿import {
+import {
   TRUST_GRAPH_SEED,
   findClaimedEntities,
   isOfficialDomainForEntity,
@@ -159,4 +159,3 @@ export function deriveTransactionGuard(input: {
     evidence: evidence.slice(0, 5),
   };
 }
-

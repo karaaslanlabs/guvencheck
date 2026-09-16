@@ -1,4 +1,4 @@
-﻿import test from "node:test";
+import test from "node:test";
 import assert from "node:assert/strict";
 import { findClaimedEntities, lookupOfficialDomain, usableTrustEntities, type TrustGraphEntity } from "../lib/trust-graph.ts";
 
@@ -36,4 +36,3 @@ test("finds a claimed regulated entity by bounded aliases", () => {
   assert.equal(found.length, 1);
   assert.equal(found[0]?.id, "bank-1");
 });
-
