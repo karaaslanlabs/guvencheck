@@ -36,3 +36,11 @@ test("finds a claimed regulated entity by bounded aliases", () => {
   assert.equal(found.length, 1);
   assert.equal(found[0]?.id, "bank-1");
 });
+
+test("default reviewed BDDK seed recognizes a bank claim and official domain", () => {
+  const seedNow = new Date("2026-09-16T18:00:00Z");
+  const claimed = findClaimedEntities("Garanti BBVA hesabınız için işlem gerekiyor", undefined, seedNow);
+  assert.equal(claimed[0]?.id, "bddk-garanti");
+  assert.equal(lookupOfficialDomain("https://sube.garantibbva.com.tr/path", undefined, seedNow)?.id, "bddk-garanti");
+  assert.equal(lookupOfficialDomain("https://garantibbva-login.com", undefined, seedNow), null);
+});

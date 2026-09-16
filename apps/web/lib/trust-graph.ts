@@ -1,3 +1,5 @@
+import { BDDK_REVIEWED_BANK_SEED } from "./trust-graph-seed.ts";
+
 export type TrustGraphRightsMode =
   | "curated_verified_fact"
   | "licensed_ingest"
@@ -27,8 +29,8 @@ export type TrustGraphEntity = {
   };
 };
 
-// Production seed stays empty until each source fact has a reviewed rights/provenance path.
-export const TRUST_GRAPH_SEED: TrustGraphEntity[] = [];
+// Production seed contains only source-reviewed, provenance-bounded facts.
+export const TRUST_GRAPH_SEED: TrustGraphEntity[] = [...BDDK_REVIEWED_BANK_SEED];
 
 function normalizeDomain(value: string) {
   return value.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0]?.replace(/\.$/, "") || "";
