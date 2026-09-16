@@ -24,6 +24,7 @@ import { deriveDeepVerification } from '../lib/deep-verification';
 import type { AnalysisResult, AnalysisType, ProtectionCandidate, ProtectionObject } from '../lib/types';
 import { ResultCard } from './ResultCard';
 import { Shield } from './Shield';
+import { LiveGuardCard } from './LiveGuardCard';
 
 type Prefill = {
   type: AnalysisType;
@@ -405,6 +406,8 @@ export function Analyzer({ prefill }: { prefill?: Prefill }) {
             </Pressable>
           </View>
         )}
+
+        {!result && <LiveGuardCard />}
 
         {!result && (
           <>
