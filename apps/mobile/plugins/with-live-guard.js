@@ -10,6 +10,7 @@ const PACKAGE_PATH = ['com', 'guvencheck', 'app', 'liveguard'];
 const SOURCE_DIR = path.join(__dirname, 'liveguard-native');
 const KOTLIN_FILES = [
   'GuvenCheckNotificationListenerService.kt',
+  'LiveGuardAlertNotifier.kt',
   'LiveGuardModule.kt',
   'LiveGuardPackage.kt',
   'LiveGuardPolicy.kt',
@@ -18,6 +19,10 @@ const KOTLIN_FILES = [
 
 function withLiveGuardManifest(config) {
   return withAndroidManifest(config, (mod) => {
+    mod.modResults.manifest['uses-permission'] = mod.modResults.manifest['uses-permission'] || [];
+    if (!mod.modResults.manifest['uses-permission'].some((item) => item.$?.['android:name'] === 'android.permission.POST_NOTIFICATIONS')) {
+      mod.modResults.manifest['uses-permission'].push({ $: { 'android:name': 'android.permission.POST_NOTIFICATIONS' } });
+    }
     const app = mod.modResults.manifest.application?.[0];
     if (!app) throw new Error('Live Guard: Android application node missing');
     app.service = app.service || [];

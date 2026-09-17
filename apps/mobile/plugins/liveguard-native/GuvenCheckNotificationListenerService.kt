@@ -59,5 +59,8 @@ class GuvenCheckNotificationListenerService : NotificationListenerService() {
       notification.packageName,
       notification.postTime,
     )
+    if (assessment.decision == "warn") {
+      LiveGuardAlertNotifier.show(applicationContext)
+    }
   }
 }

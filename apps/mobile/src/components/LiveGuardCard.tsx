@@ -8,6 +8,7 @@ import {
   openNotificationAccessSettings,
 } from '../lib/live-guard-native';
 import { summarizeProtectionActivity } from '../lib/protection-activity';
+import { ensureLiveGuardAlertPermission } from '../lib/live-guard-alerts';
 
 export function LiveGuardCard() {
   const nativeAvailable = isLiveGuardNativeAvailable();
@@ -32,6 +33,11 @@ export function LiveGuardCard() {
     });
     return () => subscription.remove();
   }, [refresh]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    void ensureLiveGuardAlertPermission();
+  }, [enabled]);
 
   const summary = summarizeProtectionActivity(entries);
   const lastChecked = summary.lastCheckedAt
