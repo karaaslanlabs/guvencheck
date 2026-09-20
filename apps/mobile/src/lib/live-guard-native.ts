@@ -3,6 +3,7 @@ import type { ProtectionActivityEntry } from './protection-activity';
 
 type LiveGuardNativeModule = {
   isNotificationAccessEnabled(): Promise<boolean>;
+  requestListenerRebind(): Promise<boolean>;
   openNotificationAccessSettings(): Promise<boolean>;
   getProtectionActivityJson(): Promise<string>;
   clearProtectionActivity(): Promise<boolean>;
@@ -19,6 +20,14 @@ export function isLiveGuardNativeAvailable() {
 
 export async function isNotificationAccessEnabled() {
   return (await nativeModule()?.isNotificationAccessEnabled()) ?? false;
+}
+
+export async function requestLiveGuardRebind() {
+  try {
+    return (await nativeModule()?.requestListenerRebind()) ?? false;
+  } catch {
+    return false;
+  }
 }
 
 export async function openNotificationAccessSettings() {

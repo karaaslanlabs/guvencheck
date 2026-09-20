@@ -5,6 +5,7 @@ import {
   getProtectionActivity,
   isLiveGuardNativeAvailable,
   isNotificationAccessEnabled,
+  requestLiveGuardRebind,
   openNotificationAccessSettings,
 } from '../lib/live-guard-native';
 import { summarizeProtectionActivity } from '../lib/protection-activity';
@@ -18,10 +19,9 @@ export function LiveGuardCard() {
 
   const refresh = useCallback(async () => {
     if (!nativeAvailable) return;
-    const [access, activity] = await Promise.all([
-      isNotificationAccessEnabled(),
-      getProtectionActivity(),
-    ]);
+    const access = await isNotificationAccessEnabled();
+    if (access) await requestLiveGuardRebind();
+    const activity = await getProtectionActivity();
     setEnabled(access);
     setEntries(activity);
   }, [nativeAvailable]);

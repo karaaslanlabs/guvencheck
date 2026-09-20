@@ -1,7 +1,9 @@
 package com.guvencheck.app.liveguard
 
+import android.content.ComponentName
 import android.content.Intent
 import android.provider.Settings
+import android.service.notification.NotificationListenerService
 import androidx.core.app.NotificationManagerCompat
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
@@ -19,6 +21,18 @@ class LiveGuardModule(
       .getEnabledListenerPackages(reactApplicationContext)
       .contains(reactApplicationContext.packageName)
     promise.resolve(enabled)
+  }
+
+  @ReactMethod
+  fun requestListenerRebind(promise: Promise) {
+    runCatching {
+      val component = ComponentName(
+        reactApplicationContext,
+        GuvenCheckNotificationListenerService::class.java,
+      )
+      NotificationListenerService.requestRebind(component)
+    }.onSuccess { promise.resolve(true) }
+      .onFailure { promise.reject("LIVE_GUARD_REBIND", it) }
   }
 
   @ReactMethod
