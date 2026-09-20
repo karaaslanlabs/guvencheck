@@ -7,6 +7,21 @@ import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 
 class GuvenCheckNotificationListenerService : NotificationListenerService() {
+  override fun onCreate() {
+    super.onCreate()
+    LiveGuardDiagnosticsStore.serviceCreated(applicationContext)
+  }
+
+  override fun onListenerConnected() {
+    super.onListenerConnected()
+    LiveGuardDiagnosticsStore.listenerConnected(applicationContext)
+  }
+
+  override fun onListenerDisconnected() {
+    LiveGuardDiagnosticsStore.listenerDisconnected(applicationContext)
+    super.onListenerDisconnected()
+  }
+
   companion object {
     private const val DUPLICATE_WINDOW_MS = 5_000L
     private val recentFingerprints = ConcurrentHashMap<String, Long>()
@@ -38,7 +53,9 @@ class GuvenCheckNotificationListenerService : NotificationListenerService() {
 
   override fun onNotificationPosted(sbn: StatusBarNotification?) {
     val notification = sbn ?: return
-    if (notification.packageName !in supportedPackages) return
+    val supported = notification.packageName in supportedPackages
+    LiveGuardDiagnosticsStore.notificationCallback(applicationContext, supported)
+    if (!supported) return
     if ((notification.notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0) return
 
     val extras = notification.notification.extras

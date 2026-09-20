@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   clearProtectionActivity,
+  getLiveGuardDiagnostics,
   getProtectionActivity,
   isLiveGuardNativeAvailable,
   isNotificationAccessEnabled,
@@ -15,15 +16,23 @@ export function LiveGuardCard() {
   const nativeAvailable = isLiveGuardNativeAvailable();
   const [enabled, setEnabled] = useState(false);
   const [entries, setEntries] = useState<Awaited<ReturnType<typeof getProtectionActivity>>>([]);
+  const [diagnostics, setDiagnostics] = useState<Awaited<ReturnType<typeof getLiveGuardDiagnostics>> | null>(null);
   const [busy, setBusy] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!nativeAvailable) return;
     const access = await isNotificationAccessEnabled();
-    if (access) await requestLiveGuardRebind();
-    const activity = await getProtectionActivity();
+    if (access) {
+      await requestLiveGuardRebind();
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    const [activity, nextDiagnostics] = await Promise.all([
+      getProtectionActivity(),
+      getLiveGuardDiagnostics(),
+    ]);
     setEnabled(access);
     setEntries(activity);
+    setDiagnostics(nextDiagnostics);
   }, [nativeAvailable]);
 
   useEffect(() => {
@@ -82,10 +91,18 @@ export function LiveGuardCard() {
       <View style={styles.headerRow}>
         <View style={{ flex: 1 }}>
           <Text style={styles.kicker}>CANLI KORUMA</Text>
-          <Text style={styles.title}>{enabled ? 'Arka plan koruması açık' : 'Arka plan korumasını aç'}</Text>
+          <Text style={styles.title}>
+            {!enabled
+              ? 'Arka plan korumasını aç'
+              : diagnostics?.listenerConnected
+                ? 'Arka plan koruması bağlı'
+                : 'İzin açık, listener bağlı değil'}
+          </Text>
         </View>
-        <View style={[styles.statusPill, enabled && styles.statusPillOn]}>
-          <Text style={styles.statusText}>{enabled ? 'AKTİF' : 'KAPALI'}</Text>
+        <View style={[styles.statusPill, enabled && diagnostics?.listenerConnected && styles.statusPillOn]}>
+          <Text style={styles.statusText}>
+            {!enabled ? 'KAPALI' : diagnostics?.listenerConnected ? 'AKTİF' : 'BAĞLANTI YOK'}
+          </Text>
         </View>
       </View>
       {!enabled ? (
@@ -100,6 +117,9 @@ export function LiveGuardCard() {
         </>
       ) : (
         <>
+          <Text style={styles.note}>
+            Tanı: listener {diagnostics?.listenerConnected ? 'BAĞLI' : 'BAĞLI DEĞİL'} · callback {diagnostics?.notificationCallbacks ?? 0} · desteklenen {diagnostics?.supportedCallbacks ?? 0}
+          </Text>
           <View style={styles.metricsRow}>
             <Metric label="Kontrol" value={summary.checked} />
             <Metric label="Uyarı" value={summary.warnings} />

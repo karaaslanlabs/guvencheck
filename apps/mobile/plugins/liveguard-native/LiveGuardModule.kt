@@ -51,6 +51,11 @@ class LiveGuardModule(
   }
 
   @ReactMethod
+  fun getDiagnosticsJson(promise: Promise) {
+    promise.resolve(LiveGuardDiagnosticsStore.readJson(reactApplicationContext))
+  }
+
+  @ReactMethod
   fun clearProtectionActivity(promise: Promise) {
     ProtectionActivityStore.clear(reactApplicationContext)
     promise.resolve(true)

@@ -6,6 +6,7 @@ type LiveGuardNativeModule = {
   requestListenerRebind(): Promise<boolean>;
   openNotificationAccessSettings(): Promise<boolean>;
   getProtectionActivityJson(): Promise<string>;
+  getDiagnosticsJson(): Promise<string>;
   clearProtectionActivity(): Promise<boolean>;
 };
 
@@ -32,6 +33,37 @@ export async function requestLiveGuardRebind() {
 
 export async function openNotificationAccessSettings() {
   return (await nativeModule()?.openNotificationAccessSettings()) ?? false;
+}
+
+export type LiveGuardDiagnostics = {
+  listenerConnected: boolean;
+  serviceCreatedAt: number;
+  listenerConnectedAt: number;
+  listenerDisconnectedAt: number;
+  notificationCallbacks: number;
+  supportedCallbacks: number;
+  lastCallbackAt: number;
+  lastSupportedAt: number;
+};
+
+export async function getLiveGuardDiagnostics(): Promise<LiveGuardDiagnostics> {
+  const fallback: LiveGuardDiagnostics = {
+    listenerConnected: false,
+    serviceCreatedAt: 0,
+    listenerConnectedAt: 0,
+    listenerDisconnectedAt: 0,
+    notificationCallbacks: 0,
+    supportedCallbacks: 0,
+    lastCallbackAt: 0,
+    lastSupportedAt: 0,
+  };
+  const raw = await nativeModule()?.getDiagnosticsJson();
+  if (!raw) return fallback;
+  try {
+    return { ...fallback, ...JSON.parse(raw) };
+  } catch {
+    return fallback;
+  }
 }
 
 export async function getProtectionActivity(): Promise<ProtectionActivityEntry[]> {

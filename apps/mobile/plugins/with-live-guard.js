@@ -11,6 +11,7 @@ const SOURCE_DIR = path.join(__dirname, 'liveguard-native');
 const KOTLIN_FILES = [
   'GuvenCheckNotificationListenerService.kt',
   'LiveGuardAlertNotifier.kt',
+  'LiveGuardDiagnosticsStore.kt',
   'LiveGuardModule.kt',
   'LiveGuardPackage.kt',
   'LiveGuardPolicy.kt',
