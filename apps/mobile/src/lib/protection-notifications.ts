@@ -29,7 +29,6 @@ async function ensureAndroidChannel(Notifications: NotificationsModule) {
     name: 'Koruma hatırlatmaları',
     description: 'Korumaya alınan önemli tarihler için seçili hatırlatmalar.',
     importance: Notifications.AndroidImportance.DEFAULT,
-    sound: 'default',
     showBadge: false,
   });
 }

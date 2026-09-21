@@ -24,7 +24,6 @@ export async function ensureLiveGuardAlertPermission() {
       name: 'Canlı Koruma uyarıları',
       description: 'Yüksek güvenli risk algılandığında GüvenCheck uyarıları.',
       importance: Notifications.AndroidImportance.HIGH,
-      sound: 'default',
       showBadge: false,
     });
 
