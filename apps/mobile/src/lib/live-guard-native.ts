@@ -42,6 +42,11 @@ export type LiveGuardDiagnostics = {
   listenerDisconnectedAt: number;
   notificationCallbacks: number;
   supportedCallbacks: number;
+  groupSummarySkipped: number;
+  emptyContentSkipped: number;
+  duplicateSkipped: number;
+  assessedCallbacks: number;
+  recordedCallbacks: number;
   lastCallbackAt: number;
   lastSupportedAt: number;
 };
@@ -54,6 +59,11 @@ export async function getLiveGuardDiagnostics(): Promise<LiveGuardDiagnostics> {
     listenerDisconnectedAt: 0,
     notificationCallbacks: 0,
     supportedCallbacks: 0,
+    groupSummarySkipped: 0,
+    emptyContentSkipped: 0,
+    duplicateSkipped: 0,
+    assessedCallbacks: 0,
+    recordedCallbacks: 0,
     lastCallbackAt: 0,
     lastSupportedAt: 0,
   };

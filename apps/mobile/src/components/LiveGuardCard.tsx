@@ -120,6 +120,9 @@ export function LiveGuardCard() {
           <Text style={styles.note}>
             Tanı: listener {diagnostics?.listenerConnected ? 'BAĞLI' : 'BAĞLI DEĞİL'} · callback {diagnostics?.notificationCallbacks ?? 0} · desteklenen {diagnostics?.supportedCallbacks ?? 0}
           </Text>
+          <Text style={styles.note}>
+            Akış: grup {diagnostics?.groupSummarySkipped ?? 0} · boş {diagnostics?.emptyContentSkipped ?? 0} · kopya {diagnostics?.duplicateSkipped ?? 0} · değerlendirilen {diagnostics?.assessedCallbacks ?? 0} · kayıt {diagnostics?.recordedCallbacks ?? 0}
+          </Text>
           <View style={styles.metricsRow}>
             <Metric label="Kontrol" value={summary.checked} />
             <Metric label="Uyarı" value={summary.warnings} />
@@ -133,7 +136,7 @@ export function LiveGuardCard() {
           </Text>
           {!!lastChecked && <Text style={styles.note}>Son kontrol: {lastChecked}</Text>}
           <Text style={styles.note}>Activity geçmişinde ham başlık veya mesaj tutulmaz; yalnız karar metadata’sı saklanır.</Text>
-          {summary.checked > 0 && (
+          {(summary.checked > 0 || (diagnostics?.notificationCallbacks ?? 0) > 0) && (
             <Pressable onPress={clearActivity} disabled={busy} style={[styles.secondaryButton, busy && styles.disabled]}>
               <Text style={styles.secondaryButtonText}>Koruma geçmişini temizle</Text>
             </Pressable>

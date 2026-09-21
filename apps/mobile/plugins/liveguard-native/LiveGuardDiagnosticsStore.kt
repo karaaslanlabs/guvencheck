@@ -11,6 +11,11 @@ object LiveGuardDiagnosticsStore {
   private const val KEY_DISCONNECTED_AT = "listener_disconnected_at"
   private const val KEY_CALLBACKS = "notification_callbacks"
   private const val KEY_SUPPORTED_CALLBACKS = "supported_callbacks"
+  private const val KEY_GROUP_SUMMARY_SKIPPED = "group_summary_skipped"
+  private const val KEY_EMPTY_CONTENT_SKIPPED = "empty_content_skipped"
+  private const val KEY_DUPLICATE_SKIPPED = "duplicate_skipped"
+  private const val KEY_ASSESSED = "assessed_callbacks"
+  private const val KEY_RECORDED = "recorded_callbacks"
   private const val KEY_LAST_CALLBACK_AT = "last_callback_at"
   private const val KEY_LAST_SUPPORTED_AT = "last_supported_at"
 
@@ -21,14 +26,19 @@ object LiveGuardDiagnosticsStore {
       .putLong(KEY_CREATED_AT, now)
       .apply()
   }
-
   fun listenerConnected(context: Context, now: Long = System.currentTimeMillis()) {
     context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
       .edit().putBoolean(KEY_CONNECTED, true).putLong(KEY_CONNECTED_AT, now).apply()
   }
+
   fun listenerDisconnected(context: Context, now: Long = System.currentTimeMillis()) {
     context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
       .edit().putBoolean(KEY_CONNECTED, false).putLong(KEY_DISCONNECTED_AT, now).apply()
+  }
+
+  private fun increment(context: Context, key: String) {
+    val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    prefs.edit().putInt(key, prefs.getInt(key, 0) + 1).apply()
   }
 
   fun notificationCallback(
@@ -48,6 +58,26 @@ object LiveGuardDiagnosticsStore {
     editor.apply()
   }
 
+  fun groupSummarySkipped(context: Context) = increment(context, KEY_GROUP_SUMMARY_SKIPPED)
+  fun emptyContentSkipped(context: Context) = increment(context, KEY_EMPTY_CONTENT_SKIPPED)
+  fun duplicateSkipped(context: Context) = increment(context, KEY_DUPLICATE_SKIPPED)
+  fun assessed(context: Context) = increment(context, KEY_ASSESSED)
+  fun recorded(context: Context) = increment(context, KEY_RECORDED)
+
+  fun resetCounters(context: Context) {
+    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+      .edit()
+      .remove(KEY_CALLBACKS)
+      .remove(KEY_SUPPORTED_CALLBACKS)
+      .remove(KEY_GROUP_SUMMARY_SKIPPED)
+      .remove(KEY_EMPTY_CONTENT_SKIPPED)
+      .remove(KEY_DUPLICATE_SKIPPED)
+      .remove(KEY_ASSESSED)
+      .remove(KEY_RECORDED)
+      .remove(KEY_LAST_CALLBACK_AT)
+      .remove(KEY_LAST_SUPPORTED_AT)
+      .apply()
+  }
   fun readJson(context: Context): String {
     val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     return JSONObject()
@@ -57,6 +87,11 @@ object LiveGuardDiagnosticsStore {
       .put("listenerDisconnectedAt", prefs.getLong(KEY_DISCONNECTED_AT, 0L))
       .put("notificationCallbacks", prefs.getInt(KEY_CALLBACKS, 0))
       .put("supportedCallbacks", prefs.getInt(KEY_SUPPORTED_CALLBACKS, 0))
+      .put("groupSummarySkipped", prefs.getInt(KEY_GROUP_SUMMARY_SKIPPED, 0))
+      .put("emptyContentSkipped", prefs.getInt(KEY_EMPTY_CONTENT_SKIPPED, 0))
+      .put("duplicateSkipped", prefs.getInt(KEY_DUPLICATE_SKIPPED, 0))
+      .put("assessedCallbacks", prefs.getInt(KEY_ASSESSED, 0))
+      .put("recordedCallbacks", prefs.getInt(KEY_RECORDED, 0))
       .put("lastCallbackAt", prefs.getLong(KEY_LAST_CALLBACK_AT, 0L))
       .put("lastSupportedAt", prefs.getLong(KEY_LAST_SUPPORTED_AT, 0L))
       .toString()

@@ -56,7 +56,10 @@ class GuvenCheckNotificationListenerService : NotificationListenerService() {
     val supported = notification.packageName in supportedPackages
     LiveGuardDiagnosticsStore.notificationCallback(applicationContext, supported)
     if (!supported) return
-    if ((notification.notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0) return
+    if ((notification.notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0) {
+      LiveGuardDiagnosticsStore.groupSummarySkipped(applicationContext)
+      return
+    }
 
     val extras = notification.notification.extras
     val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()
@@ -64,18 +67,26 @@ class GuvenCheckNotificationListenerService : NotificationListenerService() {
       extras.getCharSequence(Notification.EXTRA_BIG_TEXT)
         ?: extras.getCharSequence(Notification.EXTRA_TEXT)
     )?.toString()
-    if (title.isNullOrBlank() && text.isNullOrBlank()) return
+    if (title.isNullOrBlank() && text.isNullOrBlank()) {
+      LiveGuardDiagnosticsStore.emptyContentSkipped(applicationContext)
+      return
+    }
 
     val now = System.currentTimeMillis()
-    if (isDuplicate(notification.key, title, text, now)) return
+    if (isDuplicate(notification.key, title, text, now)) {
+      LiveGuardDiagnosticsStore.duplicateSkipped(applicationContext)
+      return
+    }
 
     val assessment = LiveGuardPolicy.assess(title, text)
+    LiveGuardDiagnosticsStore.assessed(applicationContext)
     ProtectionActivityStore.record(
       applicationContext,
       assessment,
       notification.packageName,
       notification.postTime,
     )
+    LiveGuardDiagnosticsStore.recorded(applicationContext)
     if (assessment.decision == "warn") {
       LiveGuardAlertNotifier.show(applicationContext)
     }

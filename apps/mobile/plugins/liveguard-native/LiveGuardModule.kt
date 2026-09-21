@@ -58,6 +58,7 @@ class LiveGuardModule(
   @ReactMethod
   fun clearProtectionActivity(promise: Promise) {
     ProtectionActivityStore.clear(reactApplicationContext)
+    LiveGuardDiagnosticsStore.resetCounters(reactApplicationContext)
     promise.resolve(true)
   }
 }
