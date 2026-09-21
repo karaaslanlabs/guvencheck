@@ -7,6 +7,7 @@ type LiveGuardNativeModule = {
   openNotificationAccessSettings(): Promise<boolean>;
   getProtectionActivityJson(): Promise<string>;
   getDiagnosticsJson(): Promise<string>;
+  scanActiveNotifications(): Promise<number>;
   clearProtectionActivity(): Promise<boolean>;
 };
 
@@ -47,6 +48,8 @@ export type LiveGuardDiagnostics = {
   duplicateSkipped: number;
   assessedCallbacks: number;
   recordedCallbacks: number;
+  activeScans: number;
+  activeScanSupported: number;
   lastCallbackAt: number;
   lastSupportedAt: number;
 };
@@ -64,6 +67,8 @@ export async function getLiveGuardDiagnostics(): Promise<LiveGuardDiagnostics> {
     duplicateSkipped: 0,
     assessedCallbacks: 0,
     recordedCallbacks: 0,
+    activeScans: 0,
+    activeScanSupported: 0,
     lastCallbackAt: 0,
     lastSupportedAt: 0,
   };
@@ -73,6 +78,14 @@ export async function getLiveGuardDiagnostics(): Promise<LiveGuardDiagnostics> {
     return { ...fallback, ...JSON.parse(raw) };
   } catch {
     return fallback;
+  }
+}
+
+export async function scanActiveNotifications() {
+  try {
+    return (await nativeModule()?.scanActiveNotifications()) ?? 0;
+  } catch {
+    return 0;
   }
 }
 

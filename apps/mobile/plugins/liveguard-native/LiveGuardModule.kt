@@ -56,6 +56,11 @@ class LiveGuardModule(
   }
 
   @ReactMethod
+  fun scanActiveNotifications(promise: Promise) {
+    promise.resolve(GuvenCheckNotificationListenerService.scanActiveNotifications())
+  }
+
+  @ReactMethod
   fun clearProtectionActivity(promise: Promise) {
     ProtectionActivityStore.clear(reactApplicationContext)
     LiveGuardDiagnosticsStore.resetCounters(reactApplicationContext)

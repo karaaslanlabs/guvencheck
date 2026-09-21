@@ -16,6 +16,8 @@ object LiveGuardDiagnosticsStore {
   private const val KEY_DUPLICATE_SKIPPED = "duplicate_skipped"
   private const val KEY_ASSESSED = "assessed_callbacks"
   private const val KEY_RECORDED = "recorded_callbacks"
+  private const val KEY_ACTIVE_SCANS = "active_scans"
+  private const val KEY_ACTIVE_SCAN_SUPPORTED = "active_scan_supported"
   private const val KEY_LAST_CALLBACK_AT = "last_callback_at"
   private const val KEY_LAST_SUPPORTED_AT = "last_supported_at"
 
@@ -64,6 +66,14 @@ object LiveGuardDiagnosticsStore {
   fun assessed(context: Context) = increment(context, KEY_ASSESSED)
   fun recorded(context: Context) = increment(context, KEY_RECORDED)
 
+  fun activeScan(context: Context, supportedCount: Int) {
+    val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    prefs.edit()
+      .putInt(KEY_ACTIVE_SCANS, prefs.getInt(KEY_ACTIVE_SCANS, 0) + 1)
+      .putInt(KEY_ACTIVE_SCAN_SUPPORTED, supportedCount)
+      .apply()
+  }
+
   fun resetCounters(context: Context) {
     context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
       .edit()
@@ -74,6 +84,8 @@ object LiveGuardDiagnosticsStore {
       .remove(KEY_DUPLICATE_SKIPPED)
       .remove(KEY_ASSESSED)
       .remove(KEY_RECORDED)
+      .remove(KEY_ACTIVE_SCANS)
+      .remove(KEY_ACTIVE_SCAN_SUPPORTED)
       .remove(KEY_LAST_CALLBACK_AT)
       .remove(KEY_LAST_SUPPORTED_AT)
       .apply()
@@ -92,6 +104,8 @@ object LiveGuardDiagnosticsStore {
       .put("duplicateSkipped", prefs.getInt(KEY_DUPLICATE_SKIPPED, 0))
       .put("assessedCallbacks", prefs.getInt(KEY_ASSESSED, 0))
       .put("recordedCallbacks", prefs.getInt(KEY_RECORDED, 0))
+      .put("activeScans", prefs.getInt(KEY_ACTIVE_SCANS, 0))
+      .put("activeScanSupported", prefs.getInt(KEY_ACTIVE_SCAN_SUPPORTED, 0))
       .put("lastCallbackAt", prefs.getLong(KEY_LAST_CALLBACK_AT, 0L))
       .put("lastSupportedAt", prefs.getLong(KEY_LAST_SUPPORTED_AT, 0L))
       .toString()

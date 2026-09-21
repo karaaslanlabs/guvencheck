@@ -7,6 +7,7 @@ import {
   isLiveGuardNativeAvailable,
   isNotificationAccessEnabled,
   requestLiveGuardRebind,
+  scanActiveNotifications,
   openNotificationAccessSettings,
 } from '../lib/live-guard-native';
 import { summarizeProtectionActivity } from '../lib/protection-activity';
@@ -22,9 +23,14 @@ export function LiveGuardCard() {
   const refresh = useCallback(async () => {
     if (!nativeAvailable) return;
     const access = await isNotificationAccessEnabled();
-    if (access) {
+    let currentDiagnostics = await getLiveGuardDiagnostics();
+    if (access && !currentDiagnostics.listenerConnected) {
       await requestLiveGuardRebind();
       await new Promise((resolve) => setTimeout(resolve, 500));
+      currentDiagnostics = await getLiveGuardDiagnostics();
+    }
+    if (access && currentDiagnostics.listenerConnected) {
+      await scanActiveNotifications();
     }
     const [activity, nextDiagnostics] = await Promise.all([
       getProtectionActivity(),
@@ -122,6 +128,9 @@ export function LiveGuardCard() {
           </Text>
           <Text style={styles.note}>
             Akış: grup {diagnostics?.groupSummarySkipped ?? 0} · boş {diagnostics?.emptyContentSkipped ?? 0} · kopya {diagnostics?.duplicateSkipped ?? 0} · değerlendirilen {diagnostics?.assessedCallbacks ?? 0} · kayıt {diagnostics?.recordedCallbacks ?? 0}
+          </Text>
+          <Text style={styles.note}>
+            Fallback: tarama {diagnostics?.activeScans ?? 0} · aktif desteklenen {diagnostics?.activeScanSupported ?? 0}
           </Text>
           <View style={styles.metricsRow}>
             <Metric label="Kontrol" value={summary.checked} />
